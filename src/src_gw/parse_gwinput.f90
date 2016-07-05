@@ -1,15 +1,5 @@
-!BOP
-!
-! !ROUTINE: readingw
-!
-! !INTERFACE:
-subroutine parse_gwinput
-!
-! !DESCRIPTION:
-!
-! This subroutine check important GW input parameters
 
-! !USES:
+subroutine parse_gwinput()
  
     use modinput
     use modmain
@@ -17,13 +7,9 @@ subroutine parse_gwinput
     use modmpi
     implicit none
  
-! !LOCAL VARIABLES:
     integer :: idum
     real(8) :: rdum
       
-!EOP
-!BOC
-
     if (rank==0) call boxmsg(fgw,'*',"GW input parameters")
     
 !-------------------------------------------------------------------------------
@@ -73,18 +59,12 @@ subroutine parse_gwinput
         case('acon')
             if (rank==0) write(fgw,*) '  acon - Perform only the analytic continuation of &
             &the correlation self energy and recalculate QP energies'
-        case('epsilon')
-            if (rank==0) write(fgw,*) '  epsilon - Calculate dielectric function matrix elements'
         case('eps_r')
             if (rank==0) write(fgw,*) '  eps_r - Test only option'
         case('chi0_r')
             if (rank==0) write(fgw,*) '  chi0_r - Calculate polarizability matrix elements for all q-points and convert to real-space'
         case('chi0_q')
             if (rank==0) write(fgw,*) '  chi0_q - Calculate polarizability matrix elements for a given q-point'
-!       case('epsev')
-!           if (rank==0) write(fgw,*) '  epsev - Calculate eigenvalues of the dielectric matrix' 
-!       case('wev')
-!           if (rank==0) write(fgw,*) '  wev  - Calculate eigenvalues of the screened Coulomb potential'
 !       case('epsgw')
 !           if (rank==0) write(fgw,*) '  epsgw - Calculate the GW macroscopic dielectric function'
         case('kqgen')
@@ -108,6 +88,12 @@ subroutine parse_gwinput
             if (rank==0) write(fgw,*) '  sepl - (testing option) Plot Selfenergy as a function of frequency'
         case('rotmat')
             if (rank==0) write(fgw,*) '  rotmat - (testing option) Calculate and check the MB rotation matrices (symmetry feature)'
+        case('wpol')
+            if (rank==0) write(fgw,*) '  wpol - (testing option) Calculate poles of W'
+        case('emat')
+            if (rank==0) write(fgw,*) '  epsilon - Calculate dielectric function matrix elements'
+        case('wmat')
+            if (rank==0) write(fgw,*) '  wmat - (testing option) Calculate the screened Coulomb potential matrix'
         
         case default
             if (rank==0) write(*,*) 'ERROR(parse_gwinput): Wrong task name!'
@@ -126,9 +112,6 @@ subroutine parse_gwinput
             if (rank==0) write(*,*) '  pmat - Calculate the matrix elements of the momentum operator'
             if (rank==0) write(*,*) '  acon - Perform only the analytic continuation of the correlation self energy and &
             &  recalculate QP energies'
-            if (rank==0) write(*,*) '  epsev - Calculate eigenvalues of the dielectric matrix' 
-            !if (rank==0) write(fgw,*) '  epgw - Calculate the GW macroscopic dielectric function'
-            !if (rank==0) write(fgw,*) '  wev  - Calculate eigenvalues of the screened Coulomb potential'
             if (rank==0) write(*,*) '  lapw - (test option) Calculate LAPW basis functions for plotting'
             if (rank==0) write(*,*) '  evec - (test option) Calculate DFT eigenvectors for plotting'
             if (rank==0) write(*,*) '  prod - (test option) Calculate products of eigenvectors for plotting'
@@ -450,4 +433,3 @@ subroutine parse_gwinput
       
     return
 end subroutine
-!EOC      

@@ -122,8 +122,12 @@ subroutine gw_main()
             if (rank==0) call task_analytic_continuation
         
         ! Calculate and store the (q,\omega)-dependent dielectric function
-        case('epsilon')
-            call task_epsilon
+        case('emat')
+            call task_epsilon(1)
+
+        ! Calculate and store the (q,\omega)-dependent screened coulomb potential
+        case('wmat')
+            call task_epsilon(-1)
 
         ! Calculate and store the (q,\omega)-dependent dielectric function
         case('chi0_r')
@@ -195,6 +199,10 @@ subroutine gw_main()
         ! (testing option) Check the rotational matrix for MB functions
         ! case('rotmat')
             ! if (rank==0) call test_mbrotmat
+
+        ! new
+        case('wpol') 
+            call task_wpol()
 
     end select
     

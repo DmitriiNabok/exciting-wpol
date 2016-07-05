@@ -1,5 +1,5 @@
       
-subroutine task_epsilon
+subroutine task_epsilon(iflag)
 
     use modinput
     use modmain,               only : zzero, evalsv, efermi
@@ -9,33 +9,18 @@ subroutine task_epsilon
     use mod_hdf5
             
     implicit none
-    integer(4) :: ikp, iq, fid, ik
-    real(8)    :: t0, t1
-    integer(4) :: recl
-    integer :: im
-    
-    ! mapping array 
-    integer, allocatable :: iq2rank(:)
-    
-    complex(8), allocatable :: epsilon_(:,:,:,:)
+    ! input
+    integer, intent(in) :: iflag
+    ! local
+    integer(4) :: iq, fid, iom
+    integer    :: im
 
+    character(80) :: fname
+    
     !===========================================================================
     ! Initialization
     !===========================================================================
-    !----------------------------------------------
-    ! Store all important results to the hdf5 file
-    !----------------------------------------------
-#ifdef _HDF5_
-    call hdf5_initialize()
-    fgwh5 = "gw_output.h5"
-    if (rank==0) then
-      call hdf5_create_file(fgwh5)
-      call hdf5_create_group(fgwh5,"/","parameters")
-      if (rank==0) call write_gw_parameters_hdf5
-      call hdf5_create_group(fgwh5,"/","kpoints")
-    end if
-#endif    
-    
+
     ! prepare GW global data
     call init_gw
     
@@ -64,22 +49,11 @@ subroutine task_epsilon
     &                  iqstart, iqend)
 #else
     iqstart = 1
-    iqend = kqset%nkpt
+    iqend = kset%nkpt
 #endif
     iomstart = 1
     iomend = freq%nomeg
     
-    ! iq <--> MPI rank mapping
-    allocate(iq2rank(kset%nkpt))
-    iq2rank = -1
-    do iq = iqstart, iqend
-      iq2rank(iq) = rank
-    end do
-    
-    if (allocated(epsilon_)) deallocate(epsilon_)
-    allocate(epsilon_(matsizmax,matsizmax,iomstart:iomend,iqstart:iqend))
-    epsilon_(:,:,:,:) = 0.d0
-
     if (myrank==0) then
       call boxmsg(fgw,'=','q-point cycle')
       call flushifc(fgw)
@@ -109,23 +83,45 @@ subroutine task_epsilon
       ! Set v-diagonal MB and reduce its size
       !========================================
       call setbarcev(input%gw%barecoul%barcevtol)
-      call delete_coulomb_potential
       
       !===================================
       ! Calculate the dielectric function
       !===================================
       call init_dielectric_function(mbsiz,iomstart,iomend,Gamma)
       
-      select case (trim(input%gw%scrcoul%scrtype))
-        case('ppm','PPM')
-          call calcepsilon_ppm(iq,iomstart,iomend)
-        case default
-          call calcepsilon(iq,iomstart,iomend)
-      end select
+      call calcepsilon(iq,iomstart,iomend)
+
+      ! ! Calculate the screened Coulomb potential W_{ij}
+      if (iflag < 0) then
+        call calcinveps(iomstart,iomend)
+        ! W = v^{1/2} (e^{-1}-1) v^{1/2}
+        do iom = iomstart, iomend
+        do im = 1, mbsiz
+          epsilon(im,im,iom) = barcev(im)*epsilon(im,im,iom)
+        end do
+        end do
+      end if
+
+      ! write to text file
+      call getunit(fid)
+      write(fname,'("WMAT-mat-q",I4.4,".OUT")') iq
+      open(fid, File=trim(fname), Action='WRITE')
+      iom = 1
+      do im = 1, mbsiz
+        write(fid,'(i8, 2f16.6)') im, epsilon(im,im,iom)
+      end do
+      close(fid)
+
+      write(fname,'("WMAT-iom-q",I4.4,".OUT")') iq
+      open(fid, File=trim(fname), Action='WRITE')
+      im = mbsiz
+      do iom = iomstart, iomend
+        write(fid,'(i8, 2f16.6)') iom, epsilon(im,im,iom)
+      end do
+      close(fid)
       
-      ! save to local array
-      epsilon_(1:mbsiz,1:mbsiz,iomstart:iomend,iq) = epsilon(:,:,:)
-      
+
+      call delete_coulomb_potential      
       call delete_dielectric_function(Gamma)
       if (allocated(kcw)) deallocate(kcw)
       if (allocated(unw)) deallocate(unw)
@@ -139,39 +135,6 @@ subroutine task_epsilon
     if (allocated(kiw)) deallocate(kiw)
     if (allocated(ciw)) deallocate(ciw)
     
-    !===================================
-    ! Write dielectric function to file
-    !===================================
-    
-    ! overwrite existing files
-    if (rank==0) then
-      call getunit(fid)
-      open(fid,File='EPSILON.OUT',form='UNFORMATTED',status='REPLACE')
-      close(fid)
-    endif
-    call barrier
-    
-    do iq = 1, kset%nkpt
-      if (rank==iq2rank(iq)) then
-#ifdef _HDF5_
-        write(cik,'(I4.4)') ik
-        path = "/qpoints/"//trim(adjustl(cik))
-        if (.not.hdf5_exist_group(fgwh5,"/qpoints",cik)) &
-        &  call hdf5_create_group(fgwh5,"/qpoints",cik)
-        call hdf5_write(fgwh5,path,"epsilon", &
-        &               epsilon_(1,1,1,iq),(/matsizmax,matsizmax,1:freq%nomeg/))
-#endif
-        call getunit(fid)
-        inquire(iolength=recl) epsilon_(:,:,:,iq)
-        open(fid,File="EPSILON.OUT",Action='WRITE',Form='UNFORMATTED',&
-        &    Access='DIRECT',Status='OLD',Recl=recl)
-        write(fid,rec=iq) epsilon_(:,:,:,iq)
-        close(fid)
-      end if ! rank
-      call barrier
-    end do ! iq      
-    
-    deallocate(epsilon_)    
     if (allocated(evalsv)) deallocate(evalsv)
     call delete_freqgrid(freq)
     call delete_k_vectors(kset)

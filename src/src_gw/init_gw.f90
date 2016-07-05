@@ -4,7 +4,7 @@
 !
 !!INTERFACE:
 !
-subroutine init_gw
+subroutine init_gw()
 !
 !!DESCRIPTION:
 !
@@ -141,15 +141,12 @@ subroutine init_gw
     
     ! Frequency grid initialization
     call timesec(t0)
-    if (input%gw%taskname=='g0w0' .or. &
-    &   input%gw%taskname=='gw0'  .or. &
-    &   input%gw%taskname=='emac') then
-      call generate_freqgrid(freq, &
-      &                      input%gw%freqgrid%fgrid, &
-      &                      input%gw%freqgrid%fconv, &
-      &                      input%gw%freqgrid%nomeg, &
-      &                      input%gw%freqgrid%freqmax)
-      if (rank==0) call print_freqgrid(freq,fgw)
+    call generate_freqgrid(freq, &
+    &                      input%gw%freqgrid%fgrid, &
+    &                      input%gw%freqgrid%fconv, &
+    &                      input%gw%freqgrid%nomeg, &
+    &                      input%gw%freqgrid%freqmax)
+    if (rank==0) call print_freqgrid(freq,fgw)
 #ifdef _HDF5_      
       if (rank==0) then
         call hdf5_write(fgwh5,"/parameters/freqgrid","freqs", &
@@ -158,17 +155,6 @@ subroutine init_gw
         &               freq%womeg(1),(/freq%nomeg/))
       end if
 #endif
-
-    else
-      ! frequency independent method
-      freq%nomeg = 1
-      freq%freqmax = 0.d0
-      freq%fconv = 'imfreq'
-      allocate(freq%freqs(freq%nomeg))
-      freq%freqs(1) = 1.d-3
-      allocate(freq%womeg(freq%nomeg))
-      freq%womeg(1) = 1.d0
-    end if
       
     call timesec(t1)
     time_initfreq = time_initfreq+t1-t0
@@ -181,7 +167,7 @@ subroutine init_gw
     !------------------------------
     ! print the memory usage info
     !------------------------------
-    call print_memory_usage
+    call print_memory_usage()
 
     ! timing
     call timesec(tend)
@@ -191,7 +177,7 @@ subroutine init_gw
     
 contains
 
-    subroutine print_memory_usage
+    subroutine print_memory_usage()
         implicit none
         real(8) :: msize_tot
         if (rank==0) then
