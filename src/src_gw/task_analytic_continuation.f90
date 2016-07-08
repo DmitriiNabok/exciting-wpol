@@ -41,10 +41,11 @@ subroutine task_analytic_continuation
     nbandsgw = nbgw-ibgw+1
     call init_kqpoint_set
     call generate_freqgrid(freq, &
-    &                      input%gw%freqgrid%fgrid, &
-    &                      input%gw%freqgrid%fconv, &
-    &                      input%gw%freqgrid%nomeg, &
-    &                      input%gw%freqgrid%freqmax)
+    &                      input%gw%freqgrid%fgrid,   &
+    &                      input%gw%freqgrid%fconv,   &
+    &                      input%gw%freqgrid%nomeg,   &
+    &                      input%gw%freqgrid%freqmax, &
+    &                      input%gw%freqgrid%freqmin)
     
     if (myrank==0) then
     

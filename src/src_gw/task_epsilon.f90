@@ -102,24 +102,27 @@ subroutine task_epsilon(iflag)
         end do
       end if
 
-      ! write to text file
+      ! store q-dependent Wij
       call getunit(fid)
       write(fname,'("WMAT-mat-q",I4.4,".OUT")') iq
       open(fid, File=trim(fname), Action='WRITE')
-      iom = 1
+      do iom = 1, freq%nomeg, 100
       do im = 1, mbsiz
         write(fid,'(i8, 2f16.6)') im, epsilon(im,im,iom)
+      end do
+      write(fid,*)
       end do
       close(fid)
 
       write(fname,'("WMAT-iom-q",I4.4,".OUT")') iq
       open(fid, File=trim(fname), Action='WRITE')
-      im = mbsiz
+      do im = mbsiz-100, mbsiz, 10
       do iom = iomstart, iomend
         write(fid,'(i8, 2f16.6)') iom, epsilon(im,im,iom)
       end do
+      write(fid,*)
+      end do
       close(fid)
-      
 
       call delete_coulomb_potential      
       call delete_dielectric_function(Gamma)

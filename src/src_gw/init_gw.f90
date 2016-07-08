@@ -142,10 +142,11 @@ subroutine init_gw()
     ! Frequency grid initialization
     call timesec(t0)
     call generate_freqgrid(freq, &
-    &                      input%gw%freqgrid%fgrid, &
-    &                      input%gw%freqgrid%fconv, &
-    &                      input%gw%freqgrid%nomeg, &
-    &                      input%gw%freqgrid%freqmax)
+    &                      input%gw%freqgrid%fgrid,   &
+    &                      input%gw%freqgrid%fconv,   &
+    &                      input%gw%freqgrid%nomeg,   &
+    &                      input%gw%freqgrid%freqmax, &
+    &                      input%gw%freqgrid%freqmin)
     if (rank==0) call print_freqgrid(freq,fgw)
 #ifdef _HDF5_      
       if (rank==0) then

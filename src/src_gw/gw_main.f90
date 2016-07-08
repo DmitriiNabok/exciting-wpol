@@ -16,10 +16,11 @@ subroutine gw_main()
     use mod_mpi_gw
     use m_getunit
     use mod_hdf5
+    use mod_wpol
+    use mod_selfc_wpol
     
 !!LOCAL VARIABLES:   
     implicit none
-    character(80) :: fname
     real(8) :: tstart, tend
 
 !!REVISION HISTORY:
@@ -202,7 +203,11 @@ subroutine gw_main()
 
         ! new
         case('wpol') 
-            call task_wpol()
+            ! call task_wpol() <-- old subroutine
+            call test_wpol()
+
+        case('selfc_wpol')
+            call test_selfc_wpol()
 
     end select
     

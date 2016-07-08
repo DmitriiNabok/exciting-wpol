@@ -2,11 +2,10 @@
 subroutine task_wpol()
 
     use modinput
-    use modmain,               only : zzero, evalsv, efermi
+    use modmain,               only : zzero, zone, zi, evalsv, efermi
     use modgw
     use mod_mpi_gw
     use m_getunit
-    use mod_hdf5
             
     implicit none
     integer :: fid
@@ -20,7 +19,8 @@ subroutine task_wpol()
     integer :: ic, icg, ia, is, ias
     
     character(80) :: fname
-    real(8) :: eta
+    
+    complex(8) :: zieta, zif
     
     ! mapping array 
     integer,    allocatable :: a2vck(:,:)
@@ -52,16 +52,6 @@ subroutine task_wpol()
     
     ! clean not used anymore global exciting variables
     call clean_gndstate
-    
-    if (.not.input%gw%rpmat) then
-      !========================================================
-      ! calculate momentum matrix elements and store to a file
-      !========================================================
-      call calcpmatgw
-    end if
-    
-    ! occupancy dependent BZ integration weights kiw and ciw
-    call kintw
     
 !===========================================================================
 ! Main loop: BZ integration
@@ -104,14 +94,27 @@ subroutine task_wpol()
     call indexMapping()
     allocate(dmmdev(nvck))
     allocate(dmmd(nvck,nvck))
+
     ! smearing parameter
-    eta = 1.d-4
+    zieta = zi*1.d-8
+
+    select case (input%gw%freqgrid%fconv)
+      case('refreq')
+        ! real axis
+        zif = zone
+      case('imfreq')
+        ! imaginary axis
+        zif = zi
+      case default
+        write(*,*) "Correct options: refreq or imfreq"
+        stop
+    end select
     
     ! each process does a subset
     do iq = iqstart, iqend
     
       write(*,*)
-      write(*,*) '(task_gw): q-point cycle, iq = ', iq
+      write(*,*) '(task_wpol): q-point cycle, iq = ', iq
     
       Gamma = gammapoint(kqset%vqc(:,iq))
           
@@ -126,10 +129,7 @@ subroutine task_wpol()
       ! Calculate the bare Coulomb potential
       !======================================
       call calcbarcmb(iq)
-      
-      !========================================
-      ! Set v-diagonal MB and reduce its size
-      !========================================
+      ! Set v-diagonal MB
       call setbarcev(input%gw%barecoul%barcevtol)
       
       allocate(minmmat(1:mbsiz,1:ndim,numin:nstdf))
@@ -181,7 +181,6 @@ subroutine task_wpol()
             stop
           end if
           i = vck2a(n,m,ik)
-          ! k-point weight
           d(i) = de
           md(:,i) = sqrt(de)*minmmat(:,n,m)
         end do
@@ -244,13 +243,13 @@ subroutine task_wpol()
       do iom = iomstart, iomend
 
         do i = 1, nvck
-          if (abs(dmmdev(i)) > 1.d-6) then
+          if (abs(dmmdev(i)) > 1.d-8) then
             t1 = sqrt(dmmdev(i))
             !-----------------------------------------------
             ! smearing method
             zt1 =  0.5d0 / t1 *                     &
-            &    ( 1.d0/(freq%freqs(iom)-t1+zi*eta) &
-            &     -1.d0/(freq%freqs(iom)+t1-zi*eta) )
+            &    ( 1.d0/(zif*freq%freqs(iom)-t1+zieta) &
+            &     -1.d0/(zif*freq%freqs(iom)+t1-zieta) )
             !-----------------------------------------------
             md(:,i) = zt1*wvck(:,i) ! reuse the array md
           else
@@ -269,30 +268,33 @@ subroutine task_wpol()
 
       end do ! iom
 
-      ! check
+      ! account for prefactor 4/Nk
       wij = wij*4.d0/dble(kqset%nkpt)
-
-      deallocate(md)
-      deallocate(wvck)
 
       ! store q-dependent Wij
       call getunit(fid)
       write(fname,'("WMAT-mat-q",I4.4,".OUT")') iq
       open(fid, File=trim(fname), Action='WRITE')
-      iom = 1
+      do iom = 1, freq%nomeg, 100
       do im = 1, mbsiz
         write(fid,'(i8, 2f16.6)') im, wij(im,im,iom)
+      end do
+      write(fid,*)
       end do
       close(fid)
 
       write(fname,'("WMAT-iom-q",I4.4,".OUT")') iq
       open(fid, File=trim(fname), Action='WRITE')
-      im = mbsiz
+      do im = mbsiz-100, mbsiz, 10
       do iom = iomstart, iomend
         write(fid,'(i8, 2f16.6)') iom, wij(im,im,iom)
       end do
+      write(fid,*)
+      end do
       close(fid)
 
+      deallocate(md)
+      deallocate(wvck)
       deallocate(wij)
 
     end do ! iq
@@ -301,6 +303,11 @@ subroutine task_wpol()
     deallocate(dmmd)
 
     ! clean up
+    deallocate(eveckalm)
+    deallocate(eveckpalm)
+    deallocate(eveck)
+    deallocate(eveckp)
+
     if (allocated(kiw)) deallocate(kiw)
     if (allocated(ciw)) deallocate(ciw)
     

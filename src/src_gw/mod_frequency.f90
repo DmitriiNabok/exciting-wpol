@@ -7,7 +7,8 @@ MODULE mod_frequency
         character(8) :: fgrid           ! grid type
         character(8) :: fconv           ! type of the frequency dependence
         integer :: nomeg                ! grid size
-        real(8) :: freqmax              ! cutoff frequency
+        real(8) :: freqmax              ! upper cutoff frequency
+        real(8) :: freqmin              ! lower cutoff frequency
         real(8), allocatable :: freqs(:)! frequency grid
         real(8), allocatable :: womeg(:)! integration weights
     end type frequency
@@ -16,22 +17,23 @@ MODULE mod_frequency
     external gauleg
     
 CONTAINS
-	
-!-------------------------------------------------------------------------------
-    subroutine delete_freqgrid(self)
-	    type(frequency), intent(INOUT) :: self
-		if (allocated(self%freqs)) deallocate(self%freqs)
-		if (allocated(self%womeg)) deallocate(self%womeg)
-	end subroutine
 
 !-------------------------------------------------------------------------------
-    subroutine generate_freqgrid(self,fgrid,fconv,nomeg,freqmax)
+    subroutine delete_freqgrid(self)
+        type(frequency), intent(INOUT) :: self
+    	if (allocated(self%freqs)) deallocate(self%freqs)
+    	if (allocated(self%womeg)) deallocate(self%womeg)
+    end subroutine
+
+!-------------------------------------------------------------------------------
+    subroutine generate_freqgrid(self,fgrid,fconv,nomeg,freqmax,freqmin)
         implicit none
         type(frequency), intent(OUT) :: self
         character*(*),   intent(IN)  :: fgrid
         character*(*),   intent(IN)  :: fconv
         integer,         intent(IN)  :: nomeg
         real(8),         intent(IN)  :: freqmax
+        real(8),         intent(IN)  :: freqmin
 ! local variables
         integer :: i, n
         real(8), allocatable :: u(:)
@@ -68,6 +70,7 @@ CONTAINS
 
 ! cutoff frequency
         self%freqmax = freqmax
+        self%freqmin = freqmin
 
 ! generate frequency integration grid
         if (allocated(self%freqs)) deallocate(self%freqs)
@@ -79,7 +82,7 @@ CONTAINS
 
         case('eqdist','EQDIST') ! Equaly spaced mesh (for tests purposes only)
             do i = 1, self%nomeg
-                self%freqs(i) = dble(i)*self%freqmax/dble(self%nomeg)
+                self%freqs(i) = self%freqmin + dble(i)*(self%freqmax-self%freqmin)/dble(self%nomeg)
                 self%womeg(i) = 1.d0/dble(self%nomeg)
             enddo  
       
@@ -161,7 +164,8 @@ CONTAINS
                 stop
         end select
         write(funit,*) 'Number of frequencies: < nomeg >', self%nomeg
-        write(funit,*) 'Cutoff frequency: < freqmax >', self%freqmax
+        write(funit,*) 'Upper frequency limit: < freqmax >', self%freqmax
+        write(funit,*) 'Lower frequency limit: < freqmin >', self%freqmin
         write(funit,*) 'frequency list: < #    freqs    weight >'
         do i = 1, self%nomeg
             write(funit,'(i4,1p,2g18.10)') i, self%freqs(i), self%womeg(i)

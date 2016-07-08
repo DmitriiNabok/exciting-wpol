@@ -88,13 +88,15 @@ subroutine parse_gwinput()
             if (rank==0) write(fgw,*) '  sepl - (testing option) Plot Selfenergy as a function of frequency'
         case('rotmat')
             if (rank==0) write(fgw,*) '  rotmat - (testing option) Calculate and check the MB rotation matrices (symmetry feature)'
-        case('wpol')
-            if (rank==0) write(fgw,*) '  wpol - (testing option) Calculate poles of W'
         case('emat')
             if (rank==0) write(fgw,*) '  epsilon - Calculate dielectric function matrix elements'
         case('wmat')
             if (rank==0) write(fgw,*) '  wmat - (testing option) Calculate the screened Coulomb potential matrix'
-        
+        case('wpol')
+            if (rank==0) write(fgw,*) '  wpol - (testing option) Calculate poles of W'
+        case('selfc_wpol')
+            if (rank==0) write(fgw,*) '  selfc_wpol - (testing option) Calculate poles of W'
+
         case default
             if (rank==0) write(*,*) 'ERROR(parse_gwinput): Wrong task name!'
             if (rank==0) write(*,*)
@@ -133,46 +135,41 @@ subroutine parse_gwinput()
     if (.not.associated(input%gw%freqgrid)) &
      &  input%gw%freqgrid => getstructfreqgrid(emptynode)
      
-    if (input%gw%taskname=='g0w0' .or. &
-    &   input%gw%taskname=='gw0'  .or. &
-    &   input%gw%taskname=='emac') then
-      ! no frequencies is required
-      if (rank==0) write(fgw,*) 'Frequency integration parameters:'
-      if (rank==0) write(fgw,*) 'Number of frequencies: ', input%gw%freqgrid%nomeg
-      if (rank==0) write(fgw,*) 'Cutoff frequency: ', input%gw%freqgrid%freqmax
-      if (rank==0) write(fgw,*) 'Grid type:'
-      select case (input%gw%freqgrid%fgrid)
-        case('eqdist')
-          if (rank==0) write(fgw,*) '  eqdist - Equaly spaced mesh (for tests purposes only)'
-        case('gaulag')
-          if (rank==0) write(fgw,*) '  gaulag - Grid for Gauss-Laguerre quadrature'
-        case('gaule2')
-          if (rank==0) write(fgw,*) '  gaule2 - Grid for double Gauss-Legendre quadrature,'
-          if (rank==0) write(fgw,*) '           from 0 to freqmax and from freqmax to infinity'
-        case('gauleg')
-          if (rank==0) write(fgw,*) '  gauleg - Grid for Gauss-Legendre quadrature, from 0 to freqmax'
-        case default
-          if (rank==0) write(*,*) 'ERROR(parse_gwinput): Unknown frequency grid type!'
-          stop
-      end select
-      if (rank==0) write(fgw,*) 'Convolution method:'
-      select case (input%gw%freqgrid%fconv)
-        case('nofreq')
-          if (rank==0) write(fgw,*) '  nofreq : no frequecy dependence of the weights'
-        case('refreq')
-          if (rank==0) write(fgw,*) '  refreq : weights calculated for real frequecies'
-        case('imfreq')
-          if (rank==0) write(fgw,*) '  imfreq : weights calculated for imaginary frequecies'
-        case default
-          if (rank==0) write(*,*) 'ERROR(parse_gwinput): Unknown frequency convolution method!'
-          if (rank==0) write(*,*) '  Currently supported options are:'
-          if (rank==0) write(*,*) '  nofreq : no frequecy dependence of the weights'
-          if (rank==0) write(*,*) '  refreq : weights calculated for real frequecies'
-          if (rank==0) write(*,*) '  imfreq : weights calculated for imaginary frequecies'
-          stop
-      end select
-      if (rank==0) call linmsg(fgw,'-','')
-    end if    
+    if (rank==0) write(fgw,*) 'Frequency integration parameters:'
+    if (rank==0) write(fgw,*) 'Number of frequencies: ', input%gw%freqgrid%nomeg
+    if (rank==0) write(fgw,*) 'Cutoff frequency: ', input%gw%freqgrid%freqmax
+    if (rank==0) write(fgw,*) 'Grid type:'
+    select case (input%gw%freqgrid%fgrid)
+      case('eqdist')
+        if (rank==0) write(fgw,*) '  eqdist - Equaly spaced mesh (for tests purposes only)'
+      case('gaulag')
+        if (rank==0) write(fgw,*) '  gaulag - Grid for Gauss-Laguerre quadrature'
+      case('gaule2')
+        if (rank==0) write(fgw,*) '  gaule2 - Grid for double Gauss-Legendre quadrature,'
+        if (rank==0) write(fgw,*) '           from 0 to freqmax and from freqmax to infinity'
+      case('gauleg')
+        if (rank==0) write(fgw,*) '  gauleg - Grid for Gauss-Legendre quadrature, from 0 to freqmax'
+      case default
+        if (rank==0) write(*,*) 'ERROR(parse_gwinput): Unknown frequency grid type!'
+        stop
+    end select
+    if (rank==0) write(fgw,*) 'Convolution method:'
+    select case (input%gw%freqgrid%fconv)
+      case('nofreq')
+        if (rank==0) write(fgw,*) '  nofreq : no frequecy dependence of the weights'
+      case('refreq')
+        if (rank==0) write(fgw,*) '  refreq : weights calculated for real frequecies'
+      case('imfreq')
+        if (rank==0) write(fgw,*) '  imfreq : weights calculated for imaginary frequecies'
+      case default
+        if (rank==0) write(*,*) 'ERROR(parse_gwinput): Unknown frequency convolution method!'
+        if (rank==0) write(*,*) '  Currently supported options are:'
+        if (rank==0) write(*,*) '  nofreq : no frequecy dependence of the weights'
+        if (rank==0) write(*,*) '  refreq : weights calculated for real frequecies'
+        if (rank==0) write(*,*) '  imfreq : weights calculated for imaginary frequecies'
+        stop
+    end select
+    if (rank==0) call linmsg(fgw,'-','')
     
 !-------------------------------------------------------------------------------
 ! Analytic continuation parameters

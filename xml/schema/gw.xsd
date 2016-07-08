@@ -49,7 +49,12 @@
                 </xs:attribute>
                 <xs:attribute ex:importance="expert" type="fortrandouble" ex:unit="" name="freqmax" default="1.0d0">
                   <xs:annotation><xs:documentation>
-                  Parameter of the double frequency grid technique.
+                  Upper frequency cutoff.
+                  </xs:documentation></xs:annotation>
+                </xs:attribute>
+                <xs:attribute ex:importance="expert" type="fortrandouble" ex:unit="" name="freqmin" default="0.0d0">
+                  <xs:annotation><xs:documentation>
+                  Lower frequency cutoff.
                   </xs:documentation></xs:annotation>
                 </xs:attribute>
               </xs:complexType>
@@ -412,6 +417,14 @@
             <xs:annotation>
               <xs:documentation>
                 Determine the basis size for the Fourier-series based interpolation subroutine used for the QP bandstructure plot.
+              </xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+
+          <xs:attribute ex:importance="expert" type="fortrandouble" ex:unit="" name="swidth" default="1.0d-4">
+            <xs:annotation>
+              <xs:documentation>
+                Smearing parameters for frequency dependent quantities.
               </xs:documentation>
             </xs:annotation>
           </xs:attribute>
