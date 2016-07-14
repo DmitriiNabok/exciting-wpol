@@ -2,11 +2,12 @@
 subroutine task_epsilon(iflag)
 
     use modinput
-    use modmain,               only : zzero, evalsv, efermi
+    use modmain,          only : zzero, evalsv, efermi
     use modgw
     use mod_mpi_gw
     use m_getunit
     use mod_hdf5
+    use mod_wpol,         only : print_wmat
             
     implicit none
     ! input
@@ -102,27 +103,8 @@ subroutine task_epsilon(iflag)
         end do
       end if
 
-      ! store q-dependent Wij
-      call getunit(fid)
-      write(fname,'("WMAT-mat-q",I4.4,".OUT")') iq
-      open(fid, File=trim(fname), Action='WRITE')
-      do iom = 1, freq%nomeg, 100
-      do im = 1, mbsiz
-        write(fid,'(i8, 2f16.6)') im, epsilon(im,im,iom)
-      end do
-      write(fid,*)
-      end do
-      close(fid)
-
-      write(fname,'("WMAT-iom-q",I4.4,".OUT")') iq
-      open(fid, File=trim(fname), Action='WRITE')
-      do im = mbsiz-100, mbsiz, 10
-      do iom = iomstart, iomend
-        write(fid,'(i8, 2f16.6)') iom, epsilon(im,im,iom)
-      end do
-      write(fid,*)
-      end do
-      close(fid)
+      ! output results for visualization
+      call print_wmat(iq,mbsiz,freq%nomeg,epsilon)
 
       call delete_coulomb_potential      
       call delete_dielectric_function(Gamma)

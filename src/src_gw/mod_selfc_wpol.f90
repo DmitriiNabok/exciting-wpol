@@ -47,6 +47,22 @@ contains
     ! Setup working array dimensions and index mappings
     call set_wpol_indices()
 
+    ! q->0 singularity treatment scheme
+    select case (trim(input%gw%selfenergy%singularity))
+      case('none')
+        singc1 = 0.d0
+        singc2 = 0.d0
+      case('mpb')
+        ! Auxiliary function method
+        call setsingc
+      case('crg')  
+        ! Auxiliary function method
+        call calc_q0_singularities
+      case default
+        write(*,*) 'ERROR(mod_wpol::test_wpol) Unknown singularity treatment scheme!'
+        stop
+    end select
+
     !=========================
     ! Main loop over q-points
     !=========================
@@ -85,7 +101,7 @@ contains
       call calc_wvck(iq)
       ! call calc_wmat()
       ! call print_wmat(iq)
-      call delete_coulomb_potential
+      ! call delete_coulomb_potential
       call clear_wpol()
 
       ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega) 
@@ -132,8 +148,7 @@ contains
     wkq = 1.d0/dble(kqset%nkpt)
 
     allocate(wght(nvck,mdim,freq%nomeg))
-    allocate(mw(mdim,nvck))
-    allocate(mwt(mdim,nvck))
+    allocate(mw(mdim,nvck),mwt(mdim,nvck))
     allocate(zmat(mdim,mdim))
 
     allocate(minmmat(1:mbsiz,ibgw:nbgw,1:mdim))
@@ -142,8 +157,6 @@ contains
     do ispn = 1, nspinor
     do ik = 1, kset%nkpt
 
-      jk = kqset%kqid(ik,iq)
-        
       write(*,*)
       write(*,'(a,3i)') '(mod_selfc_wpol::calc_selfc_wpol_q): rank, (iq, ik):', myrank, iq, ik
 
@@ -152,7 +165,7 @@ contains
       ! write(*,*) 'minmmat=', sum(minmmat)
       
       ! \omega-dependent weights
-      call calc_weights(jk,wght)
+      call calc_weights(ik,iq,wght)
       ! write(*,*) 'wght=', sum(wght)
 
       ! loop over states (diagonal matrix elements only)
@@ -160,11 +173,13 @@ contains
 
         ! precalculate \sum_{i} conjg(M^i_{nm})*w_{vck} in Eq.(2.28)
         call zgemm( 'c', 'n', mdim, nvck, mbsiz, &
-        &           zone, minmmat(:,n,:), mbsiz, wvck, mbsiz, &
+        &           zone, minmmat(1:mbsiz,n,:), mbsiz, wvck(1:mbsiz,:), mbsiz, &
         &           zzero, mw, mdim)
+
+        if (Gamma) mw(n,:) = mw(n,:)+wvck(mbsiz+1,:)/sqrt(omega)*singc2
       
         ! loop over frequencies
-        do iom = 1, freq%nomeg  
+        do iom = 1, freq%nomeg
       
           ! include prefactor
           do m = 1, mdim
@@ -204,17 +219,19 @@ contains
 
 
 !--------------------------------------------------------------------------------
-  subroutine calc_weights(jk,wght)
+  subroutine calc_weights(ik,iq,wght)
     implicit none
-    integer,    intent(in)  :: jk
+    integer,    intent(in)  :: ik, iq
     complex(8), intent(out) :: wght(nvck,mdim,freq%nomeg)
     ! local
+    integer :: jkp, jk
     integer :: i, icg, is, ia, ias, ic
     integer :: m, iom
     real(8) :: enk, sgn
     complex(8) :: zieta, zif, zt1
-    
-    zieta = zi*input%gw%swidth
+
+    ! zieta = zi*input%gw%swidth
+    zieta = zi*input%gw%selfenergy%swidth
     select case (input%gw%freqgrid%fconv)
       case('refreq')
         ! real axis
@@ -227,12 +244,15 @@ contains
         stop
     end select
 
+    jk = kqset%kqid(ik,iq)
+    jkp = kset%ik2ikp(jk)
+
     do iom = 1, freq%nomeg
 
       do m = 1, mdim
 
         if (m <= nstse) then
-          enk = evalsv(m,jk)
+          enk = evalsv(m,jkp)
         else
           icg = m-nstse
           is  = corind(icg,1)
@@ -244,15 +264,15 @@ contains
 
         if ((m <= nomax).or.(m > nstse)) then
           ! valence or core state
-          sgn = -1.d0
+          sgn = 1.d0
         else
           ! conduction state
-          sgn = 1.d0
+          sgn = -1.d0
         end if
 
         do i = 1, nvck
-          zt1 = tvck(i) * ( zif*freq%freqs(iom) + sgn*(enk-tvck(i)+zieta) )
-          if (abs(zt1) > 1.d-16) then
+          zt1 = tvck(i) * ( zif*freq%freqs(iom) + sgn*(tvck(i)-zieta) - enk )
+          if (abs(zt1) > 1.d-8) then
             zt1 = 0.5d0 / zt1
           else
             zt1 = 0.d0
@@ -273,7 +293,7 @@ contains
   subroutine calc_minmkq(ik,iq,ispn)
     implicit none
     integer, intent(in) :: ik, iq, ispn
-    integer :: jk
+    integer :: jk, im
     complex(8), allocatable :: evecsv(:,:,:)
 
     ! k-q point
@@ -297,6 +317,11 @@ contains
     call expand_evec(jk,'c')
     call expand_products(ik,iq,ibgw,nbgw,-1,1,mdim,nstse,minmmat)
     
+    ! \tilde{M} -> M
+    do im = 1, mbsiz
+      minmmat(im,:,:) = minmmat(im,:,:)/sqrt(barcev(im))
+    end do
+
     deallocate(eveckalm)
     deallocate(eveckpalm)
     deallocate(eveck)

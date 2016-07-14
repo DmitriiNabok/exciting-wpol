@@ -8,6 +8,7 @@ module mod_wpol
   implicit none
   
   integer, private :: ndim, mdim
+  integer, private :: mbdim
   integer, public  :: nvck
 
   ! index mapping array
@@ -49,6 +50,13 @@ contains
     iqend = kset%nkpt
 #endif
 
+    !===========================
+    ! Momentum matrix elements
+    !===========================
+    if (.not.input%gw%rpmat) then
+      call calcpmatgw
+    end if
+    
     ! Setup working array dimensions and index mappings
     call set_wpol_indices()
 
@@ -82,6 +90,7 @@ contains
       call calcbarcmb(iq)
       ! set v-diagonal MB
       call setbarcev(input%gw%barecoul%barcevtol)
+
 
       ! step 1: calculate M*D^{1/2} and D^2 + D^{1/2}*M^{+}*v*M*D^{1/2} matrices
       call calc_md_dmmd(iq)
@@ -161,17 +170,47 @@ contains
     implicit none
     integer, intent(in) :: iq
 
-    integer :: ispn, ik, jk, ikp, jkp
-    integer :: ic, icg, ia, is, ias
-    integer :: i, n, m
-    real(8) :: de
+    integer    :: ispn, ik, jk, ikp, jkp
+    integer    :: ic, icg, ia, is, ias
+    integer    :: i, j, n, m
+    integer(8) :: recl
+    real(8)    :: de
+    real(8)    :: q0eps(3), modq0
+    complex(8) :: zt1
 
     real(8),    allocatable :: d(:)
     complex(8), allocatable :: evecsv(:,:,:)
 
+    mbdim = mbsiz
+    if (Gamma) then
+      mbdim = mbsiz+1
+      ! q->0 direction
+      q0eps(:) = input%gw%scrcoul%q0eps(:)
+      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
+      q0eps(:) = q0eps(:)/modq0
+      ! val-val
+      if (allocated(pmatvv)) deallocate(pmatvv)
+      allocate(pmatvv(nomax,numin:nstdf,3))
+      inquire(iolength=recl) pmatvv
+      open(fid_pmatvv,File=fname_pmatvv, &
+      &    Action='READ',Form='UNFORMATTED',&
+      &    Access='DIRECT',Status='OLD',Recl=recl)
+      ! core-val 
+      if (input%gw%coreflag=='all') then
+        if (allocated(pmatcv)) deallocate(pmatcv)
+        allocate(pmatcv(ncg,numin:nstdf,3))
+        inquire(iolength=recl) pmatcv
+        open(fid_pmatcv,File=fname_pmatcv, &
+        &    Action='READ',Form='UNFORMATTED', &
+        &    Access='DIRECT',Status='OLD',Recl=recl)
+      end if
+    end if
+
     ! global arrays
-    allocate(md(mbsiz,nvck))    
+    allocate(md(mbdim,nvck))
+    md(:,:) = 0.d0  
     allocate(dmmd(nvck,nvck))
+    dmmd(:,:) = 0.d0
 
     ! local data
     allocate(eveckalm(nstsv,apwordmax,lmmaxapw,natmtot))
@@ -189,70 +228,100 @@ contains
       write(*,*)
       write(*,*) '(mod_wpol::calc_md_dmmd): rank, (iq, ik):', myrank, iq, ik
     
-        ! k-q point
-        jk = kqset%kqid(ik,iq)
+      ! k-q point
+      jk = kqset%kqid(ik,iq)
 
-        ! irreducible k-point index
-        ikp = kset%ik2ikp(ik)
-        jkp = kset%ik2ikp(jk)
+      ! irreducible k-point index
+      ikp = kset%ik2ikp(ik)
+      jkp = kset%ik2ikp(jk)
       
-        ! get KS eigenvectors
-        call getevecsvgw_new('GW_EVECSV.OUT',jk,kqset%vkl(:,jk),nmatmax,nstsv,nspinor,evecsv)
-        eveckp = conjg(evecsv(:,:,ispn))
-        call getevecsvgw_new('GW_EVECSV.OUT',ik,kqset%vkl(:,ik),nmatmax,nstsv,nspinor,evecsv)
-        eveck = evecsv(:,:,ispn)
+      ! get KS eigenvectors
+      call getevecsvgw_new('GW_EVECSV.OUT',jk,kqset%vkl(:,jk),nmatmax,nstsv,nspinor,evecsv)
+      eveckp = conjg(evecsv(:,:,ispn))
+      call getevecsvgw_new('GW_EVECSV.OUT',ik,kqset%vkl(:,ik),nmatmax,nstsv,nspinor,evecsv)
+      eveck = evecsv(:,:,ispn)
         
-        ! Calculate M^i_{nm}+M^i_{cm}
-        call expand_evec(ik,'t')
-        call expand_evec(jk,'c')
-        call expand_products(ik,iq,1,ndim,nomax,numin,nstdf,-1,minmmat)
+      ! Calculate M^i_{nm}+M^i_{cm}
+      call expand_evec(ik,'t')
+      call expand_evec(jk,'c')
+      call expand_products(ik,iq,1,ndim,nomax,numin,nstdf,-1,minmmat)
+
+      ! read the momentum matrix elements
+      if (Gamma) call getpmatkgw(ik)
         
-        ! Setup \tilde{M}_{ab}(q) * 2D^{1/2}
-        do m = numin, nstdf
-        do n = 1, ndim
-          if (n <= nomax) then
-            de = evalsv(m,jkp)-evalsv(n,ikp)
-          else
-            icg = n-nomax
-            is  = corind(icg,1)
-            ia  = corind(icg,2)
-            ic  = corind(icg,3)
-            ias = idxas(ia,is)
-            de  = evalsv(m,jkp)-evalcr(ic,ias)
+      ! Setup \tilde{M}_{ab}(q) * 2D^{1/2}
+      do m = numin, nstdf
+      do n = 1, ndim
+        i = vck2a(n,m,ik)
+        if (n <= nomax) then
+          de = evalsv(m,jkp)-evalsv(n,ikp)
+          if (Gamma) then
+            ! p \cdot q
+            zt1 =  pmatvv(n,m,1)*q0eps(1)+ &
+            &      pmatvv(n,m,2)*q0eps(2)+ &
+            &      pmatvv(n,m,3)*q0eps(3)
           end if
-          if (abs(de) < 1.d-6) then
-            write(*,*) "(mod_wpol::calc_md_dmmd) Problem with eigenvalues! ", n, m
-            stop
+        else
+          icg = n-nomax
+          is  = corind(icg,1)
+          ia  = corind(icg,2)
+          ic  = corind(icg,3)
+          ias = idxas(ia,is)
+          de  = evalsv(m,jkp)-evalcr(ic,ias)
+          if (Gamma) then
+            ! p \cdot q
+            zt1 =  pmatcv(icg,m,1)*q0eps(1)+ &
+            &      pmatcv(icg,m,2)*q0eps(2)+ &
+            &      pmatcv(icg,m,3)*q0eps(3)
           end if
-          i = vck2a(n,m,ik)
-          d(i) = de
-          md(:,i) = sqrt(de)*minmmat(:,n,m)
-        end do
-        end do
+        end if
+        if (abs(de) < 1.d-6) then
+          write(*,*) "(mod_wpol::calc_md_dmmd) Problem with eigenvalues! ", n, m
+          stop
+        end if
 
-      end do ! ik
-      end do ! nspinor
+        d(i) = de
+        md(1:mbsiz,i) = sqrt(de)*minmmat(1:mbsiz,n,m)
 
-      deallocate(minmmat)
-      deallocate(eveckalm)
-      deallocate(eveckpalm)
-      deallocate(eveck)
-      deallocate(eveckp)
-      deallocate(evecsv)
+        ! singular term
+        if (Gamma) md(mbsiz+1,i) = -sqrt(4.d0*pi/omega)*zt1/sqrt(de)
 
-      ! D^{1/2} M^{+} v M D^{1/2} = D^{1/2} \tilde{M}^{+} \tilde{M} D^{1/2}
-      call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
-      &           zone, md, mbsiz, md, mbsiz, &
-      &           zzero, dmmd, nvck)
-
-      ! account for prefactor 4/Nk
-      dmmd(:,:) = dmmd(:,:)*4.d0/dble(kqset%nkpt)
-
-      ! D^2 + D^{1/2} M^{+} v M D^{1/2}
-      do i = 1, nvck
-        dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
       end do
-      deallocate(d)
+      end do
+
+    end do ! ik
+    end do ! nspinor
+
+    deallocate(minmmat)
+    deallocate(eveckalm)
+    deallocate(eveckpalm)
+    deallocate(eveck)
+    deallocate(eveckp)
+    deallocate(evecsv)
+    if (Gamma) then
+      close(fid_pmatvv)
+      deallocate(pmatvv)
+      if (input%gw%coreflag=='all') then
+        deallocate(pmatcv)
+        close(fid_pmatcv)
+      end if
+    end if
+
+    ! D^{1/2} M^{+} v M D^{1/2} = D^{1/2} \tilde{M}^{+} \tilde{M} D^{1/2}
+
+    ! regular term
+    call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+    &           zone, md, mbdim, md, mbdim, &
+    &           zzero, dmmd, nvck)
+    
+    ! account for prefactor 4/Nk
+    dmmd(:,:) = dmmd(:,:)*4.d0/dble(kqset%nkpt)
+
+    ! D^2 + D^{1/2} M^{+} v M D^{1/2}
+    do i = 1, nvck
+      dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
+    end do
+    deallocate(d)
 
     return
   end subroutine
@@ -301,19 +370,22 @@ contains
   subroutine calc_wvck(iq)
     implicit none
     integer, intent(in) :: iq
-    integer :: im
+    integer :: im, i
+    real(8) :: t1
 
     ! v * M * D^{1/2} = v^{1/2} * \tilde{M} * 2D^{1/2}
     do im = 1, mbsiz
       md(im,:) = sqrt(barcev(im))*md(im,:)
     end do
+    ! singular term
+    if (Gamma) md(mbsiz+1,:) = sqrt(4.d0*pi)*md(mbsiz+1,:)
 
     ! w_{vck} (2.20)
-    allocate(wvck(mbsiz,nvck))
-    call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-    &           zone, md, mbsiz, dmmd, nvck, &
-    &           zzero, wvck, mbsiz)
-
+    allocate(wvck(mbdim,nvck))
+    call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+    &           zone, md, mbdim, dmmd, nvck, &
+    &           zzero, wvck, mbdim)
+    
     ! think of storing w_{vck} to be reused for calculating \Sigma_c
 
     return
@@ -325,10 +397,10 @@ contains
     integer    :: iom, i
     complex(8) :: zt1, zif, zieta
 
-    ! W_{ij}(q,\omega) (2.22)
+    ! W_{ij}(q,\omega) (2.22) (regular part only)
     allocate(wij(mbsiz,mbsiz,freq%nomeg))
 
-    zieta = zi*1.d-8
+    zieta = zi*input%gw%scrcoul%swidth
     select case (input%gw%freqgrid%fconv)
       case('refreq')
         ! real axis
@@ -355,8 +427,9 @@ contains
         end if
       end do
 
+      ! Important: correct dimensions for q=0 case
       call zgemm( 'n', 'c', mbsiz, mbsiz, nvck, &
-      &           zone, md, mbsiz, wvck, mbsiz, &
+      &           zone, md(1:mbsiz,:), mbsiz, wvck(1:mbsiz,:), mbsiz, &
       &           zzero, wij(:,:,iom), mbsiz)
 
       ! W = v + wij

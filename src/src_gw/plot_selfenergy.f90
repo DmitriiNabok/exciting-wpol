@@ -105,24 +105,6 @@ subroutine plot_selfenergy
     call readselfc
 #endif
 
-    ! KS states analysis
-    call fermi_exciting(input%groundstate%tevecsv, &
-    &                   nvelgw, &
-    &                   nbandsgw,kset%nkpt,evalks(ibgw:nbgw,:), &
-    &                   kset%ntet,kset%tnodes,kset%wtet,kset%tvol, &
-    &                   efermi,egap,df)
-    call bandstructure_analysis('KS',ibgw,nbgw,kset%nkpt, &
-    &                           evalks(ibgw:nbgw,:),efermi)
-
-    ! QP states analysis
-    call fermi_exciting(input%groundstate%tevecsv, &
-    &                   nvelgw, &
-    &                   nbandsgw,kset%nkpt,evalqp(ibgw:nbgw,:), &
-    &                   kset%ntet,kset%tnodes,kset%wtet,kset%tvol, &
-    &                   eferqp,egap,df)
-    call bandstructure_analysis('G0W0',ibgw,nbgw,kset%nkpt, &
-    &                           evalqp(ibgw:nbgw,:),eferqp)
-
     ! Frequency grid for the spectral function
     if (.not.associated(input%gw%selfenergy%SpectralFunctionPlot)) &
     & input%gw%selfenergy%SpectralFunctionPlot => getstructspectralfunctionplot(emptynode)
@@ -168,7 +150,7 @@ subroutine plot_selfenergy
     do ik = 1, kset%nkpt
       do ie = ibgw, nbgw
 
-        ! enk = evalks(ie,ik)-efermi
+        ! enk = evalks(ie,ik)-eferks
         ! enk = evalqp(ie,ik)-eferqp
         do iom = 1, freq%nomeg
           zy(iom) = selfec(ie,iom,ik)

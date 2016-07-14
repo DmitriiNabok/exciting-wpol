@@ -1,6 +1,4 @@
-!
-!
-!
+
 subroutine getpmatkgw(ik)
 
     use modinput
@@ -17,13 +15,12 @@ subroutine getpmatkgw(ik)
     integer :: ie1, ie2, icg, is, ia, ias, ic
     real(8) :: s(3,3), v1(3), v2(3), v3(3), t1
     logical :: lfound
-    integer :: recl
-    
-    ikp = kset%ik2ikp(ik)
-    
+
     !=========================
     ! Read the data from file
     !=========================
+
+    ikp = kset%ik2ikp(ik)
     
     read(fid_pmatvv,rec=ikp) pmatvv
     if (input%gw%coreflag=='all') then

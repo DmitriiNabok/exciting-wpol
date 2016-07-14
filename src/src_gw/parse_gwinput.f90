@@ -89,7 +89,7 @@ subroutine parse_gwinput()
         case('rotmat')
             if (rank==0) write(fgw,*) '  rotmat - (testing option) Calculate and check the MB rotation matrices (symmetry feature)'
         case('emat')
-            if (rank==0) write(fgw,*) '  epsilon - Calculate dielectric function matrix elements'
+            if (rank==0) write(fgw,*) '  emat - Calculate dielectric function matrix elements'
         case('wmat')
             if (rank==0) write(fgw,*) '  wmat - (testing option) Calculate the screened Coulomb potential matrix'
         case('wpol')
