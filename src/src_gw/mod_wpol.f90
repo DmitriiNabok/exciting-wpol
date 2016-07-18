@@ -91,7 +91,6 @@ contains
       ! set v-diagonal MB
       call setbarcev(input%gw%barecoul%barcevtol)
 
-
       ! step 1: calculate M*D^{1/2} and D^2 + D^{1/2}*M^{+}*v*M*D^{1/2} matrices
       call calc_md_dmmd(iq)
 
@@ -176,7 +175,7 @@ contains
     integer(8) :: recl
     real(8)    :: de
     real(8)    :: q0eps(3), modq0
-    complex(8) :: zt1
+    complex(8) :: zt1, wkp
 
     real(8),    allocatable :: d(:)
     complex(8), allocatable :: evecsv(:,:,:)
@@ -220,6 +219,8 @@ contains
     allocate(evecsv(nmatmax,nstsv,nspinor))
     allocate(minmmat(mbsiz,ndim,numin:nstdf))
     allocate(d(nvck))
+
+    wkp = 2.d0/sqrt(dble(kqset%nkpt))
 
     ! Loop over k-points
     do ispn = 1, nspinor
@@ -281,10 +282,12 @@ contains
         end if
 
         d(i) = de
-        md(1:mbsiz,i) = sqrt(de)*minmmat(1:mbsiz,n,m)
 
-        ! singular term
-        if (Gamma) md(mbsiz+1,i) = -sqrt(4.d0*pi/omega)*zt1/sqrt(de)
+        ! v^{1/2} M 2D^{1/2}
+        md(1:mbsiz,i) = minmmat(1:mbsiz,n,m)*sqrt(de)*wkp
+
+        ! singular term: v^{1/2} M^{0} D^{1/2}
+        if (Gamma) md(mbsiz+1,i) = -sqrt(4.d0*pi/omega)*zt1/sqrt(de)*wkp
 
       end do
       end do
@@ -307,16 +310,13 @@ contains
       end if
     end if
 
-    ! D^{1/2} M^{+} v M D^{1/2} = D^{1/2} \tilde{M}^{+} \tilde{M} D^{1/2}
+    ! 2D^{1/2} M^{+} v M 2D^{1/2} = 2D^{1/2} \tilde{M}^{+} \tilde{M} 2D^{1/2}
 
     ! regular term
     call zgemm( 'c', 'n', nvck, nvck, mbdim, &
-    &           zone, md, mbdim, md, mbdim, &
+    &           zone, md, mbdim, md, mbdim,  &
     &           zzero, dmmd, nvck)
     
-    ! account for prefactor 4/Nk
-    dmmd(:,:) = dmmd(:,:)*4.d0/dble(kqset%nkpt)
-
     ! D^2 + D^{1/2} M^{+} v M D^{1/2}
     do i = 1, nvck
       dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
@@ -373,19 +373,12 @@ contains
     integer :: im, i
     real(8) :: t1
 
-    ! v * M * D^{1/2} = v^{1/2} * \tilde{M} * 2D^{1/2}
-    do im = 1, mbsiz
-      md(im,:) = sqrt(barcev(im))*md(im,:)
-    end do
-    ! singular term
-    if (Gamma) md(mbsiz+1,:) = sqrt(4.d0*pi)*md(mbsiz+1,:)
-
     ! w_{vck} (2.20)
     allocate(wvck(mbdim,nvck))
     call zgemm( 'n', 'n', mbdim, nvck, nvck, &
     &           zone, md, mbdim, dmmd, nvck, &
     &           zzero, wvck, mbdim)
-    
+
     ! think of storing w_{vck} to be reused for calculating \Sigma_c
 
     return
@@ -394,7 +387,7 @@ contains
 !--------------------------------------------------------------------------------
   subroutine calc_wmat()
     implicit none
-    integer    :: iom, i
+    integer    :: iom, i, im
     complex(8) :: zt1, zif, zieta
 
     ! W_{ij}(q,\omega) (2.22) (regular part only)
@@ -416,9 +409,9 @@ contains
     do iom = 1, freq%nomeg
 
       do i = 1, nvck
-        ! skip "bad" eigenvalues if they are
+        ! exclude "bad" eigenvalues if they are
         if (abs(tvck(i)) > 1.d-8) then
-          zt1 =  0.5d0 / tvck(i) *                     &
+          zt1 =  0.5d0 / tvck(i) *                        &
           &    ( 1.d0/(zif*freq%freqs(iom)-tvck(i)+zieta) &
           &     -1.d0/(zif*freq%freqs(iom)+tvck(i)-zieta) )
           md(:,i) = zt1*wvck(:,i) ! reuse the array md
@@ -426,6 +419,11 @@ contains
           md(:,i) = zzero
         end if
       end do
+
+      ! v w_{vck} w_{vck}^*
+      do im = 1, mbsiz
+        md(im,:) = barcev(im)*md(im,:)
+      end do 
 
       ! Important: correct dimensions for q=0 case
       call zgemm( 'n', 'c', mbsiz, mbsiz, nvck, &
@@ -438,9 +436,6 @@ contains
       ! end do
 
     end do ! iom
-
-    ! account for prefactor 4/Nk
-    wij(:,:,:) = wij(:,:,:)*4.d0/dble(kqset%nkpt)
 
     return
   end subroutine

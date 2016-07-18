@@ -90,7 +90,36 @@ subroutine calcepsilon(iq,iomstart,iomend)
     ! Calculate the q-dependent BZ integration weights
     !==================================================
     call qdepwtet(iq,iomstart,iomend,ndim)
-        
+
+    !==========================
+    ! Momentum matrix elements
+    !==========================
+    if (Gamma) then
+      !---------
+      ! val-val
+      !---------
+      if (allocated(pmatvv)) deallocate(pmatvv)
+      allocate(pmatvv(nomax,numin:nstdf,3))
+      msize = sizeof(pmatvv)*b2mb
+      inquire(iolength=recl) pmatvv
+      open(fid_pmatvv,File=fname_pmatvv, &
+      &    Action='READ',Form='UNFORMATTED',&
+      &    Access='DIRECT',Status='OLD',Recl=recl)
+      !----------
+      ! core-val 
+      !----------
+      if (input%gw%coreflag=='all') then
+        if (allocated(pmatcv)) deallocate(pmatcv)
+        allocate(pmatcv(ncg,numin:nstdf,3))
+        msize = msize+sizeof(pmatcv)*b2mb
+        inquire(iolength=recl) pmatcv
+        open(fid_pmatcv,File=fname_pmatcv, &
+        &    Action='READ',Form='UNFORMATTED', &
+        &    Access='DIRECT',Status='OLD',Recl=recl)
+      end if
+      write(*,'(" calcepsilon: rank, size(pmat) (Mb):",i4,f8.2)') myrank, msize
+    end if
+    
     allocate(minm(1:mbsiz,1:ndim,numin:nstdf))
     allocate(minmmat(1:mbsiz,1:ndim,numin:nstdf))
     msize = 2*sizeof(minmmat)*b2mb
@@ -186,6 +215,9 @@ subroutine calcepsilon(iq,iomstart,iomend)
       ! deallocate the momentum matrix elements
       deallocate(pmatvv)
       if (input%gw%coreflag=='all') deallocate(pmatcv)
+      ! close files
+      close(fid_pmatvv)
+      if (input%gw%coreflag=='all') close(fid_pmatcv)
     end if
     deallocate(eveck)
     deallocate(eveckp)

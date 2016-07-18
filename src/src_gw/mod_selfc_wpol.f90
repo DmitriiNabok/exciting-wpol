@@ -139,17 +139,22 @@ contains
     integer, intent(in) :: iq
     integer    :: ispn, ik, jk, n, iom, m, i
     real(8)    :: wkq
-    complex(8) :: zt1
+    complex(8) :: zt1, coefs1, coefs2
     complex(8), allocatable :: wght(:,:,:)
-    complex(8), allocatable :: mw(:,:), mwt(:,:)
+    complex(8), allocatable :: mw(:,:), mwt(:)
+    complex(8), allocatable :: zv1(:)
     complex(8), allocatable :: zmat(:,:)
-    complex(8), external    :: zdotc
+    complex(8), external    :: zdotc, zdotu
 
     wkq = 1.d0/dble(kqset%nkpt)
+    coefs1 = sqrt(4.d0*pi/omega) * singc1
+    coefs2 = 4.d0*pi/omega * singc2
 
     allocate(wght(nvck,mdim,freq%nomeg))
-    allocate(mw(mdim,nvck),mwt(mdim,nvck))
-    allocate(zmat(mdim,mdim))
+    allocate(mw(mdim,nvck),mwt(nvck))
+    if (Gamma) then
+      allocate(zv1(nvck))
+    end if
 
     allocate(minmmat(1:mbsiz,ibgw:nbgw,1:mdim))
 
@@ -158,7 +163,7 @@ contains
     do ik = 1, kset%nkpt
 
       write(*,*)
-      write(*,'(a,3i)') '(mod_selfc_wpol::calc_selfc_wpol_q): rank, (iq, ik):', myrank, iq, ik
+      write(*,'(a,3i8)') '(mod_selfc_wpol::calc_selfc_wpol_q): rank, (iq, ik):', myrank, iq, ik
 
       ! Product basis coefficients M^i_{nm}(k,q)
       call calc_minmkq(ik,iq,ispn)
@@ -176,31 +181,51 @@ contains
         &           zone, minmmat(1:mbsiz,n,:), mbsiz, wvck(1:mbsiz,:), mbsiz, &
         &           zzero, mw, mdim)
 
-        if (Gamma) mw(n,:) = mw(n,:)+wvck(mbsiz+1,:)/sqrt(omega)*singc2
+        if (Gamma) then
+          ! second term in Eq. (2.41) ~ 1/q:  precalculate \sum l'
+          call zgemv('c', mbsiz, nvck, zone, wvck(1:mbsiz,:), mbsiz, &
+          &           minmmat(1:mbsiz,n,n), 1, zzero, zv1, 1)
+        end if
       
         ! loop over frequencies
         do iom = 1, freq%nomeg
-      
-          ! include prefactor
-          do m = 1, mdim
-          do i = 1, nvck
-            mwt(m,i) = mw(m,i)*wght(i,m,iom)
-          end do
-          end do
 
-          ! sum over vck
-          call zgemm( 'n', 'c', mdim, mdim, nvck, &
-          &           zone, mwt, mdim, mw, mdim, &
-          &           zzero, zmat, mdim)
-
-          ! last sum over v'+c'
+          ! sum over states
           zt1 = 0.d0
           do m = 1, mdim
-            zt1 = zt1 + zmat(m,m)
-          end do
+            ! apply frequency/state dependent prefactor
+            do i = 1, nvck
+              mwt(i) = wght(i,m,iom)*mw(m,i)
+            end do
+            ! sum over vck
+            zt1 = zt1 + zdotc(nvck,mw(m,:),1,mwt,1)
+          end do ! m
 
           selfec(n,iom,ik) = selfec(n,iom,ik)+wkq*zt1
 
+          if (Gamma) then
+            !---------------------------------------------------
+            ! contribution from the first term: 1/q^2
+            do i = 1, nvck
+              mwt(i) = wght(i,n,iom)*wvck(mbsiz+1,i)
+            end do
+            zt1 = coefs2*zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
+            selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
+            !---------------------------------------------------
+            ! contribution from the second term: 1/q
+            do i = 1, nvck
+              mwt(i) = wght(i,n,iom)*wvck(mbsiz+1,i)
+            end do
+            zt1 = coefs1*zdotu(nvck,zv1,1,mwt,1)
+            selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
+            !---------------------------------------------------
+            ! contribution from the third term: 1/q
+            do i = 1, nvck
+              mwt(i) = wght(i,n,iom)*conjg(wvck(mbsiz+1,i))
+            end do
+            zt1 = coefs1*zdotc(nvck,zv1,1,mwt,1)
+            selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
+          end if
         end do ! iom
 
       end do ! n
@@ -212,7 +237,7 @@ contains
     deallocate(wght)
     deallocate(mw)
     deallocate(mwt)
-    deallocate(zmat)
+    if (Gamma) deallocate(zv1)
       
     return
   end subroutine
@@ -271,13 +296,13 @@ contains
         end if
 
         do i = 1, nvck
-          zt1 = tvck(i) * ( zif*freq%freqs(iom) + sgn*(tvck(i)-zieta) - enk )
-          if (abs(zt1) > 1.d-8) then
+          if (abs(tvck(i)) > 1.d-8) then
+            ! zt1 = tvck(i) * ( zif*freq%freqs(iom) -enk + sgn*(tvck(i)-zieta) )
+            zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + sgn*(tvck(i)-zieta) )
             zt1 = 0.5d0 / zt1
           else
             zt1 = 0.d0
           end if
-          ! write(*,*) i, m, iom, zt1
           wght(i,m,iom) = zt1
         end do ! i
 
@@ -317,11 +342,6 @@ contains
     call expand_evec(jk,'c')
     call expand_products(ik,iq,ibgw,nbgw,-1,1,mdim,nstse,minmmat)
     
-    ! \tilde{M} -> M
-    do im = 1, mbsiz
-      minmmat(im,:,:) = minmmat(im,:,:)/sqrt(barcev(im))
-    end do
-
     deallocate(eveckalm)
     deallocate(eveckpalm)
     deallocate(eveck)
@@ -352,7 +372,7 @@ contains
     open(fid2, File='SELFC-WPOL-Im.OUT', Action='WRITE')
 
     n = nb-ib+1
-    write(frmt,'("(",i,"f14.6)")') 1+n
+    write(frmt,'("(",i8,"f14.6)")') 1+n
     ! write(*,*) trim(frmt)
 
     write(fid1,*) '# ik = ', ik
