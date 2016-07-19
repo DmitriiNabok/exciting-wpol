@@ -329,22 +329,136 @@ contains
 !--------------------------------------------------------------------------------
   subroutine diagonalize_dmmd()
     implicit none
-    integer                 :: i, info, lwork
-    ! RWORK dimension should be at least MAX(1,3*N-2)
+    integer :: i, info, lwork, lrwork, liwork, lwmax
+    integer :: il, iu, m
+    real(8) :: abstol, vl, vu
+    integer,    allocatable :: iwork(:), isuppz(:)
     real(8),    allocatable :: rwork(:)
-    complex(8), allocatable :: work(:)
+    complex(8), allocatable :: work(:), z(:,:)
+
+    character(80) :: method
 
     ! matrix eigenvalues
     allocate(tvck(nvck))
 
-    write(*,*)
-    write(*,*) 'Diagonalization with zheev'
-    write(*,*)
-    lwork = 2*nvck
-    allocate(work(lwork),rwork(3*nvck))
-    call zheev( 'v', 'u', nvck, dmmd, nvck, &
-    &           tvck, work, lwork, rwork, info )
-    deallocate(work,rwork)
+    method = 'zheevr'
+    lwmax  = huge(i)
+    
+    select case(method)
+
+      case('zheev')
+        write(*,*)
+        write(*,*) 'Diagonalization with zheev'
+        write(*,*)
+        !
+        ! Query the optimal workspace
+        !
+        lwork = -1
+        allocate(work(1), rwork(1))
+        call zheev( 'vectors', 'lower', nvck, dmmd, nvck, &
+        &           tvck, work, lwork, rwork, &
+        &           info )
+        lwork = min( lwmax, int(work(1)) )
+        deallocate(work, rwork)
+        ! solve eigenproblem
+        allocate(work(lwork), rwork(3*nvck-2))
+        call zheev( 'vectors', 'lower', nvck, dmmd, nvck, &
+        &            tvck, work, lwork, rwork, &
+        &            info )
+        deallocate(work, rwork)
+        if (info > 0) then
+          write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd):'
+          write(*,*) '    ZHEEV algorithm failed to compute eigenvalues'
+          write(*,*) '    info = ', info
+          stop
+        end if
+
+      case('zheevd')
+        write(*,*)
+        write(*,*) 'Diagonalization with zheevd'
+        write(*,*)
+        !
+        ! Query the optimal workspace
+        !
+        lwork  = -1
+        liwork = -1
+        lrwork = -1
+        allocate(work(1), rwork(1), iwork(1))
+        call zheevd( 'vectors', 'lower', nvck, dmmd, nvck, tvck, &
+        &            work, lwork, rwork, lrwork, iwork, liwork, &
+        &            info )
+        lwork  = min( lwmax, int(work(1)) )
+        lrwork = min( lwmax, int(rwork(1)) )
+        liwork = min( lwmax, iwork(1) )
+        deallocate(work, rwork, iwork)
+        !
+        ! solve eigenproblem
+        !
+        allocate(work(lwork), rwork(lrwork), iwork(liwork))
+        call zheevd( 'vectors', 'lower', nvck, dmmd, nvck, tvck, &
+        &            work, lwork, rwork, lrwork, iwork, liwork, &
+        &            info )
+        deallocate(work, rwork, iwork)
+        if (info > 0) then
+          write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd):'
+          write(*,*) '    ZHEEVD algorithm failed to compute eigenvalues'
+          write(*,*) '    info = ', info
+          stop
+        end if
+
+      case('zheevr')
+        write(*,*)
+        write(*,*) 'Diagonalization with zheevr'
+        write(*,*)
+        ! Negative ABSTOL means using the default value
+        abstol = -1.0 
+        ! set vl, vu to compute eigenvalues in half-open (vl,vu] interval
+        vl = 0.0
+        vu = 100.0
+        !
+        ! Query the optimal workspace.
+        !
+        lwork  = -1
+        lrwork = -1
+        liwork = -1
+        allocate(z(nvck,nvck))
+        allocate(isuppz(2*nvck))
+        allocate(work(1), rwork(1), iwork(1))
+        call zheevr( 'vectors', 'values', 'lower', nvck, dmmd, nvck, &
+        &            vl, vu, il, iu, abstol, m, tvck, z, nvck, isuppz, &
+        &            work, lwork, rwork, lrwork, iwork, liwork, &
+        &            info )
+        lwork  = min( lwmax, int(work(1)) )
+        lrwork = min( lwmax, int(rwork(1)) )
+        liwork = min( lwmax, iwork(1) )
+        deallocate(work, rwork, iwork)
+        write(*,*) lwork, lrwork, liwork
+        !
+        ! solve eigenproblem.
+        !
+        allocate(work(lwork), rwork(lrwork), iwork(liwork))
+        call zheevr( 'vectors', 'values', 'lower', nvck, dmmd, nvck, &
+        &            vl, vu, il, iu, abstol, m, tvck, z, nvck, isuppz, &
+        &            work, lwork, rwork, lrwork, iwork, liwork, &
+        &            info )
+        dmmd(:,:) = z(:,:)
+        deallocate(work, rwork, iwork)
+        deallocate(isuppz)
+        deallocate(z)
+        if (info > 0) then
+          write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd):'
+          write(*,*) '    ZHEEVR algorithm failed to compute eigenvalues'
+          write(*,*) '    info = ', info
+          stop
+        end if
+
+      case default
+        write(*,*)
+        write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd): Unknown diagonalization method!'
+        write(*,*)
+        stop
+
+    end select
 
     ! check for convergence
     if ( info > 0 ) then
