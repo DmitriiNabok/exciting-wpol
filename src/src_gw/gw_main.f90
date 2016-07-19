@@ -1,14 +1,6 @@
-!BOP
-!!ROUTINE: gw_main
-!!INTERFACE:
-!
+
 subroutine gw_main()
-!
-!!DESCRIPTION:
-!
-! This is the main GW program unit 
-! 
-!!USES:
+
     use modinput
     use modmain
     use modgw
@@ -19,16 +11,9 @@ subroutine gw_main()
     use mod_wpol
     use mod_selfc_wpol
     
-!!LOCAL VARIABLES:   
     implicit none
     real(8) :: tstart, tend
 
-!!REVISION HISTORY:
-!       
-! Created April 2011 by DIN
-!
-!EOP
-!BOC
     !--------------------------------------------
     ! Skip initializing and running any GW task
     !--------------------------------------------
@@ -228,4 +213,3 @@ subroutine gw_main()
 
     return
 end subroutine
-!!EOC

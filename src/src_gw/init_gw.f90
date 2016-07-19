@@ -20,7 +20,6 @@ subroutine init_gw()
     use m_filedel
     use mod_hdf5
 
-!!LOCAL VARIABLES:
     implicit none
     character(256) :: filext_save
     logical :: reducek_
@@ -28,12 +27,6 @@ subroutine init_gw()
     real(8) :: t0, t1, tstart, tend
     integer :: stype_
 
-!!REVISION HISTORY:
-!
-! Created: April 2011 by DIN
-!
-!EOP
-!BOC
     call timesec(tstart)
     
     !spinpol = associated(input%groundstate%spin)
@@ -303,4 +296,3 @@ contains
     end subroutine
     
 end subroutine init_gw
-!EOC

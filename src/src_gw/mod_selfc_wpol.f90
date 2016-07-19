@@ -63,6 +63,13 @@ contains
         stop
     end select
 
+    !===========================
+    ! Momentum matrix elements
+    !===========================
+    if (.not.input%gw%rpmat) then
+      call calcpmatgw
+    end if
+
     !=========================
     ! Main loop over q-points
     !=========================
@@ -138,6 +145,7 @@ contains
     implicit none
     integer, intent(in) :: iq
     integer    :: ispn, ik, jk, n, iom, m, i
+    integer(8) :: recl
     real(8)    :: wkq
     complex(8) :: zt1, coefs1, coefs2
     complex(8), allocatable :: wght(:,:,:)
@@ -238,7 +246,7 @@ contains
     deallocate(mw)
     deallocate(mwt)
     if (Gamma) deallocate(zv1)
-      
+
     return
   end subroutine
 
