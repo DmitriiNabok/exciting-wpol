@@ -11,7 +11,8 @@ module mod_selfc_wpol
   complex(8), private :: zieta, zif
 
   public  :: test_selfc_wpol, print_selfc_wpol
-  private :: calc_selfc_wpol_q, calc_minmkq, omegaWeight
+  private :: calc_selfc_wpol_q, calc_minmkq
+
 
 contains
 
@@ -164,19 +165,15 @@ contains
     integer    :: ispn, ik, jk, jkp, n, iom, m, i
     integer(8) :: recl
     real(8)    :: wkq
-    complex(8) :: zt1, zwt, coefs1, coefs2
-    ! complex(8), allocatable :: wght(:,:,:)
-    complex(8), allocatable :: mw(:,:), mwt(:), zwt0(:)
-
-    complex(8), external    :: zdotc, zdotu
+    complex(8) :: zt1, zwt, coefs1, coefs2, sigma(2)
+    complex(8), allocatable :: mw(:,:)
 
     wkq    = 1.d0 / dble(kqset%nkpt)
     coefs1 = singc1 * sqrt(4.d0*pi/omega)
     coefs2 = singc2 * 4.d0*pi/omega
 
     ! allocate(wght(nvck,mdim,freq%nomeg))
-    allocate(mw(mdim,nvck),mwt(nvck))
-    if (Gamma) allocate(zwt0(nvck))
+    allocate(mw(mdim,nvck))
     allocate(minmmat(1:mbsiz,ibgw:nbgw,1:mdim))
 
     ! loop over k-points
@@ -202,55 +199,40 @@ contains
         &           zzero, mw, mdim)
 
 #ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,zt1,m,i,zwt,mwt,zwt0)
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,zt1)
 !$OMP DO
 #endif
         ! loop over frequencies
         do iom = 1, freq%nomeg
-
-          ! sum over states
           zt1 = 0.d0
-          do m = 1, mdim
-            ! apply frequency/state dependent prefactor
-            do i = 1, nvck
-              zwt = omegaWeight(jkp,i,m,iom)
-              mwt(i) = zwt*mw(m,i)
-              if ((Gamma) .and. (m==n)) zwt0(i) = zwt
-            end do
-            ! sum over vck
-            zt1 = zt1 + zdotc(nvck,mw(m,:),1,mwt,1)
-          end do ! m
+          ! sum over states
+          zt1 = zt1 + sum_occupied(jkp,iom,mw)
+          zt1 = zt1 + sum_unoccupied(jkp,iom,mw)
+          zt1 = zt1 + sum_core(jkp,iom,mw)
           selfec(n,iom,ik) = selfec(n,iom,ik)+wkq*zt1
-
-          if (Gamma) then
-            !---------------------------------------------------
-            ! contribution from the first term: 1/q^2
-            do i = 1, nvck
-              mwt(i) = zwt0(i)*wvck(mbsiz+1,i)
-            end do
-            zt1 = coefs2*zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
-            selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
-            !---------------------------------------------------
-            ! contribution from the second term: 1/q
-            do i = 1, nvck
-              mwt(i) = zwt0(i)*wvck(mbsiz+1,i)
-            end do
-            zt1 = coefs1*zdotc(nvck,mw(n,:),1,mwt,1)
-            selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
-            !---------------------------------------------------
-            ! contribution from the third term: 1/q
-            do i = 1, nvck
-              mwt(i) = zwt0(i)*conjg(wvck(mbsiz+1,i))
-            end do
-            zt1 = coefs1*zdotu(nvck,mw(n,:),1,mwt,1)
-            selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
-          end if
-          
         end do ! iom
 #ifdef USEOMP
 !$OMP END DO
 !$OMP END PARALLEL
 #endif
+
+        if (Gamma) then
+#ifdef USEOMP
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,sigma)
+!$OMP DO
+#endif          
+          ! loop over frequencies
+          do iom = 1, freq%nomeg
+            call sum_singular(n,jkp,iom,mw,sigma)
+            selfec(n,iom,ik) = selfec(n,iom,ik)+ &
+            &                  coefs2*sigma(2) + &
+            &                  coefs1*sigma(1)
+          end do
+#ifdef USEOMP
+!$OMP END DO
+!$OMP END PARALLEL
+#endif
+        end if
 
       end do ! n
 
@@ -258,47 +240,160 @@ contains
     end do ! nspinor
      
     deallocate(minmmat)
-    deallocate(mw,mwt)
-    if (Gamma) deallocate(zwt0)
+    deallocate(mw)
 
     return
   end subroutine
 
+!--------------------------------------------------------------------------------
+  subroutine sum_singular(n,jkp,iom,mw,sigma)
+    implicit none
+    integer,    intent(in) :: n, jkp, iom
+    complex(8), intent(in) :: mw(mdim,nvck)
+    complex(8)             :: sigma(2)
+    ! local
+    integer    :: m, i
+    real(8)    :: enk
+    complex(8) :: zt1
+    complex(8), allocatable :: mwt(:)
+    complex(8), external    :: zdotc, zdotu
+
+    enk = evalsv(n,jkp)
+    allocate(mwt(nvck))
+
+    do i = 1, nvck
+      zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + sign(1,nomax-n)*(tvck(i)-zieta) )
+      zt1 = 0.5d0 / zt1
+      mwt(i) = zt1*wvck(mbsiz+1,i)
+    end do
+
+    ! contribution from the first term: 1/q^2
+    sigma(2) = zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
+    
+    !---------------------------------------------------
+    ! contribution from the second term: 1/q
+    zt1 = zdotc(nvck,mw(n,:),1,mwt,1)
+    sigma(1) = zt1
+    
+    !---------------------------------------------------
+    ! contribution from the third term: 1/q
+    do i = 1, nvck
+      zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + sign(1,nomax-n)*(tvck(i)-zieta) )
+      zt1 = 0.5d0 / zt1
+      mwt(i) = zt1*conjg(wvck(mbsiz+1,i))
+    end do
+    zt1 = zdotu(nvck,mw(n,:),1,mwt,1)
+    sigma(1) = sigma(1) + zt1
+
+    deallocate(mwt)
+
+    return
+  end subroutine
 
 !--------------------------------------------------------------------------------
-  complex(8) function omegaWeight(jkp,i,m,iom)
+  function sum_occupied(jkp,iom,mw) result(zsum)
     implicit none
-    integer,    intent(in)  :: jkp, i, m, iom
+    integer,    intent(in) :: jkp, iom
+    complex(8), intent(in) :: mw(mdim,nvck)
+    complex(8)             :: zsum
     ! local
-    integer    :: icg, is, ia, ias, ic
-    real(8)    :: enk, sgn
+    integer    :: m, i
+    real(8)    :: enk
     complex(8) :: zt1
+    complex(8), allocatable :: mwt(:)
+    complex(8), external    :: zdotc, zdotu
 
-    if (m <= nstse) then
+    zsum = 0.d0
+    allocate(mwt(nvck))
+
+    ! sum over states
+    do m = 1, nomax
       enk = evalsv(m,jkp)
-    else
+      ! apply frequency/state dependent prefactor
+      do i = 1, nvck
+        zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + (tvck(i)-zieta) )
+        zt1 = 0.5d0 / zt1
+        mwt(i) = zt1*mw(m,i)
+      end do
+      ! sum over vck
+      zsum = zsum + zdotc(nvck,mw(m,:),1,mwt,1)
+    end do ! m
+    deallocate(mwt)
+
+    return
+  end function
+
+!--------------------------------------------------------------------------------
+  function sum_unoccupied(jkp,iom,mw) result(zsum)
+    implicit none
+    integer,    intent(in) :: jkp, iom
+    complex(8), intent(in) :: mw(mdim,nvck)
+    complex(8)             :: zsum
+    ! local
+    integer    :: m, i
+    real(8)    :: enk
+    complex(8) :: zt1
+    complex(8), allocatable :: mwt(:)
+    complex(8), external    :: zdotc, zdotu
+
+    zsum = 0.d0
+    allocate(mwt(nvck))
+
+    ! sum over states
+    do m = nomax+1, nstse
+      enk = evalsv(m,jkp)
+      ! apply frequency/state dependent prefactor
+      do i = 1, nvck
+        zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) - (tvck(i)-zieta) )
+        zt1 = 0.5d0 / zt1
+        mwt(i) = zt1*mw(m,i)
+      end do
+      ! sum over vck
+      zsum = zsum + zdotc(nvck,mw(m,:),1,mwt,1)
+    end do ! m
+    deallocate(mwt)
+
+    return
+  end function
+
+!--------------------------------------------------------------------------------
+  function sum_core(jkp,iom,mw) result(zsum)
+    implicit none
+    integer,    intent(in) :: jkp, iom
+    complex(8), intent(in) :: mw(mdim,nvck)
+    complex(8)             :: zsum
+    ! local
+    integer    :: m, i
+    integer    :: icg, is, ia, ias, ic
+    real(8)    :: enk
+    complex(8) :: zt1
+    complex(8), allocatable :: mwt(:)
+    complex(8), external    :: zdotc, zdotu
+
+    zsum = 0.d0
+    allocate(mwt(nvck))
+    ! sum over states
+    do m = nstse+1, mdim
+      write(*,*) 'sum_core'
       icg = m-nstse
       is  = corind(icg,1)
       ia  = corind(icg,2)
       ias = idxas(ia,is)
       ic  = corind(icg,3)
       enk = evalcr(ic,ias)
-    end if
-
-    if ((m <= nomax).or.(m > nstse)) then
-      ! valence or core state
-      sgn = 1.d0
-    else
-      ! conduction state
-      sgn = -1.d0
-    end if
-
-    zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + sgn*(tvck(i)-zieta) )
-    omegaWeight = 0.5d0 / zt1
+      ! apply frequency/state dependent prefactor
+      do i = 1, nvck
+        zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + (tvck(i)-zieta) )
+        zt1 = 0.5d0 / zt1
+        mwt(i) = zt1*mw(m,i)
+      end do
+      ! sum over vck
+      zsum = zsum + zdotc(nvck,mw(m,:),1,mwt,1)
+    end do ! m
+    deallocate(mwt)
 
     return
-  end function  
-
+  end function
 
 !--------------------------------------------------------------------------------
   subroutine calc_minmkq(ik,iq,ispn)

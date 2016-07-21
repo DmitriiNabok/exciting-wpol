@@ -383,8 +383,8 @@ contains
         write(*,*) '    lrwork = ', lrwork
         write(*,*)
         allocate(work(lwork), rwork(lrwork))
-        call zheev( 'vectors', 'lower', nvck, dmmd, nvck, &
-        &            tvck, work, lwork, rwork, &
+        call zheev( 'vectors', 'lower', nvck, dmmd, nvck, tvck, &
+        &            work, lwork, rwork, &
         &            info )
 
         deallocate(work, rwork)
