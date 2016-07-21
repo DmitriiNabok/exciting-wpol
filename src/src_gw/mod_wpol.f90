@@ -326,15 +326,15 @@ contains
     deallocate(d)
 
     ! print DMMD matrix
-    write(fname,'("dmmd-q",I4.4,".dat")') iq
-    open(90,file=trim(fname))
-    do i = 1, nvck, 10
-      do j = 1, nvck, 10
-        write(90,'(2i8,2f16.6)') i, j, dmmd(i,j)
-      end do
-      write(90,*)
-    end do
-    close(90)
+    ! write(fname,'("dmmd-q",I4.4,".dat")') iq
+    ! open(90,file=trim(fname))
+    ! do i = 1, nvck, 10
+    !   do j = 1, nvck, 10
+    !     write(90,'(2i8,2f16.6)') i, j, dmmd(i,j)
+    !   end do
+    !   write(90,*)
+    ! end do
+    ! close(90)
 
     return
   end subroutine
@@ -484,16 +484,21 @@ contains
     end select
 
     ! print \Lambda matrix
-    write(fname,'("lambda-q",I4.4,".OUT")') iq
-    open(89,file=trim(fname))
-    do i = 1, nvck
-      write(89,'(i8,f16.6)') i, tvck(i)
-    end do
-    close(89)
+    ! write(fname,'("lambda-q",I4.4,".OUT")') iq
+    ! open(89,file=trim(fname))
+    ! do i = 1, nvck
+    !   write(89,'(i8,f16.6)') i, tvck(i)
+    ! end do
+    ! close(89)
    
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck
-      tvck(i) = sqrt(tvck(i))
+      if (tvck(i) > 1.d-8) then
+        tvck(i) = sqrt(tvck(i))
+      else
+        ! set to (numeric) zero
+        tvck(i) = 1.d-8
+      end if
     end do
 
     return
@@ -513,6 +518,7 @@ contains
     &           zzero, wvck, mbdim)
 
     ! think of storing w_{vck} to be reused for calculating \Sigma_c
+    ! add here
 
     return
   end subroutine

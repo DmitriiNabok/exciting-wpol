@@ -10,7 +10,8 @@ module mod_selfc_wpol
   integer,    private :: mdim
   complex(8), private :: zieta, zif
 
-  private :: omegaWeight
+  public  :: test_selfc_wpol, print_selfc_wpol
+  private :: calc_selfc_wpol_q, calc_minmkq, omegaWeight
 
 contains
 
