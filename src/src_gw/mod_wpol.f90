@@ -95,7 +95,7 @@ contains
       call calc_md_dmmd(iq)
 
       ! step 2: diagonalize DMMD
-      call diagonalize_dmmd()
+      call diagonalize_dmmd(iq)
 
       ! step 3: calculate w_{vck} Eq. (2.20)
       call calc_wvck(iq)
@@ -176,6 +176,8 @@ contains
     real(8)    :: de
     real(8)    :: q0eps(3), modq0
     complex(8) :: zt1, wkp
+
+    character(80) :: fname
 
     real(8),    allocatable :: d(:)
     complex(8), allocatable :: evecsv(:,:,:)
@@ -323,12 +325,24 @@ contains
     end do
     deallocate(d)
 
+    ! print DMMD matrix
+    write(fname,'("dmmd-q",I4.4,".dat")') iq
+    open(90,file=trim(fname))
+    do i = 1, nvck, 10
+      do j = 1, nvck, 10
+        write(90,'(2i8,2f16.6)') i, j, dmmd(i,j)
+      end do
+      write(90,*)
+    end do
+    close(90)
+
     return
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine diagonalize_dmmd()
+  subroutine diagonalize_dmmd(iq)
     implicit none
+    integer, intent(in) :: iq
     integer :: i, info, lwork, lrwork, liwork, lwmax
     integer :: il, iu, m
     real(8) :: abstol, vl, vu
@@ -336,20 +350,23 @@ contains
     real(8),    allocatable :: rwork(:)
     complex(8), allocatable :: work(:), z(:,:)
 
+    character(80) :: fname
     character(80) :: method
+
+    method = 'zheevr'
+    lwmax  = huge(i)
 
     ! matrix eigenvalues
     allocate(tvck(nvck))
 
-    method = 'zheevr'
-    lwmax  = huge(i)
+    write(*,*)
+    write(*,*) 'Info(mod_wpol::diagonalize_dmmd)'
+    write(*,*) '    Matrix size: ', nvck
     
     select case(method)
 
       case('zheev')
-        write(*,*)
-        write(*,*) 'Diagonalization with zheev'
-        write(*,*)
+        write(*,*) '    Diagonalization with ZHEEV'
         !
         ! Query the optimal workspace
         !
@@ -358,25 +375,28 @@ contains
         call zheev( 'vectors', 'lower', nvck, dmmd, nvck, &
         &           tvck, work, lwork, rwork, &
         &           info )
-        lwork = min( lwmax, int(work(1)) )
+        lwork  = min( lwmax, int(work(1)) )
+        lrwork = 3*nvck-2
         deallocate(work, rwork)
         ! solve eigenproblem
-        allocate(work(lwork), rwork(3*nvck-2))
+        write(*,*) '    lwork = ',  lwork
+        write(*,*) '    lrwork = ', lrwork
+        write(*,*)
+        allocate(work(lwork), rwork(lrwork))
         call zheev( 'vectors', 'lower', nvck, dmmd, nvck, &
         &            tvck, work, lwork, rwork, &
         &            info )
+
         deallocate(work, rwork)
         if (info > 0) then
-          write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd):'
+          write(*,*) 'Error(mod_wpol::diagonalize_dmmd):'
           write(*,*) '    ZHEEV algorithm failed to compute eigenvalues'
           write(*,*) '    info = ', info
           stop
         end if
 
       case('zheevd')
-        write(*,*)
-        write(*,*) 'Diagonalization with zheevd'
-        write(*,*)
+        write(*,*) '    Diagonalization with ZHEEVD'
         !
         ! Query the optimal workspace
         !
@@ -394,22 +414,24 @@ contains
         !
         ! solve eigenproblem
         !
+        write(*,*) '    lwork = ',  lwork
+        write(*,*) '    lrwork = ', lrwork
+        write(*,*) '    liwork = ', liwork
+        write(*,*)
         allocate(work(lwork), rwork(lrwork), iwork(liwork))
         call zheevd( 'vectors', 'lower', nvck, dmmd, nvck, tvck, &
         &            work, lwork, rwork, lrwork, iwork, liwork, &
         &            info )
         deallocate(work, rwork, iwork)
         if (info > 0) then
-          write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd):'
+          write(*,*) 'Error(mod_wpol::diagonalize_dmmd):'
           write(*,*) '    ZHEEVD algorithm failed to compute eigenvalues'
           write(*,*) '    info = ', info
           stop
         end if
 
       case('zheevr')
-        write(*,*)
-        write(*,*) 'Diagonalization with zheevr'
-        write(*,*)
+        write(*,*) '    Diagonalization with ZHEEVR'
         ! Negative ABSTOL means using the default value
         abstol = -1.0 
         ! set vl, vu to compute eigenvalues in half-open (vl,vu] interval
@@ -421,32 +443,33 @@ contains
         lwork  = -1
         lrwork = -1
         liwork = -1
-        allocate(z(nvck,nvck))
-        allocate(isuppz(2*nvck))
-        allocate(work(1), rwork(1), iwork(1))
-        call zheevr( 'vectors', 'values', 'lower', nvck, dmmd, nvck, &
+        allocate( z(nvck,nvck), isuppz(2*nvck) )
+        allocate( work(1), rwork(1), iwork(1) )
+        call zheevr( 'vectors', 'all', 'lower', nvck, dmmd, nvck, &
         &            vl, vu, il, iu, abstol, m, tvck, z, nvck, isuppz, &
         &            work, lwork, rwork, lrwork, iwork, liwork, &
         &            info )
         lwork  = min( lwmax, int(work(1)) )
         lrwork = min( lwmax, int(rwork(1)) )
         liwork = min( lwmax, iwork(1) )
-        deallocate(work, rwork, iwork)
-        write(*,*) lwork, lrwork, liwork
+        deallocate( work, rwork, iwork )
         !
         ! solve eigenproblem.
         !
-        allocate(work(lwork), rwork(lrwork), iwork(liwork))
-        call zheevr( 'vectors', 'values', 'lower', nvck, dmmd, nvck, &
+        write(*,*) '    lwork = ',  lwork
+        write(*,*) '    lrwork = ', lrwork
+        write(*,*) '    liwork = ', liwork
+        write(*,*)
+        allocate( work(lwork), rwork(lrwork), iwork(liwork) )
+        call zheevr( 'vectors', 'all', 'lower', nvck, dmmd, nvck, &
         &            vl, vu, il, iu, abstol, m, tvck, z, nvck, isuppz, &
         &            work, lwork, rwork, lrwork, iwork, liwork, &
         &            info )
         dmmd(:,:) = z(:,:)
         deallocate(work, rwork, iwork)
-        deallocate(isuppz)
-        deallocate(z)
+        deallocate(z, isuppz)
         if (info > 0) then
-          write(*,*) 'Error(mod_selfc_wpol::diagonalize_dmmd):'
+          write(*,*) 'Error(mod_wpol::diagonalize_dmmd):'
           write(*,*) '    ZHEEVR algorithm failed to compute eigenvalues'
           write(*,*) '    info = ', info
           stop
@@ -460,21 +483,17 @@ contains
 
     end select
 
-    ! check for convergence
-    if ( info > 0 ) then
-      write(*,*)'Error(task_wpol): the algorithm failed to compute eigenvalues'
-      write(*,*)'info = ', info
-      stop
-    end if
-
+    ! print \Lambda matrix
+    write(fname,'("lambda-q",I4.4,".OUT")') iq
+    open(89,file=trim(fname))
+    do i = 1, nvck
+      write(89,'(i8,f16.6)') i, tvck(i)
+    end do
+    close(89)
+   
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck
-      if (abs(tvck(i)) > 1.d-8) then
-        tvck(i) = sqrt(tvck(i))
-      else
-        write(*,*) "Warning(mod_wpol::diagonalize_dmmd) Negative or zero eigenvalues!"
-        write(*,*) "i, tvck: ", i, tvck(i)
-      end if
+      tvck(i) = sqrt(tvck(i))
     end do
 
     return
@@ -523,15 +542,10 @@ contains
     do iom = 1, freq%nomeg
 
       do i = 1, nvck
-        ! exclude "bad" eigenvalues if they are
-        if (abs(tvck(i)) > 1.d-8) then
-          zt1 =  0.5d0 / tvck(i) *                        &
-          &    ( 1.d0/(zif*freq%freqs(iom)-tvck(i)+zieta) &
-          &     -1.d0/(zif*freq%freqs(iom)+tvck(i)-zieta) )
-          md(:,i) = zt1*wvck(:,i) ! reuse the array md
-        else
-          md(:,i) = zzero
-        end if
+        zt1 =  0.5d0 / tvck(i) *                        &
+        &    ( 1.d0/(zif*freq%freqs(iom)-tvck(i)+zieta) &
+        &     -1.d0/(zif*freq%freqs(iom)+tvck(i)-zieta) )
+        md(:,i) = zt1*wvck(:,i) ! reuse the array md
       end do
 
       ! v w_{vck} w_{vck}^*

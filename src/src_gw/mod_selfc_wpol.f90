@@ -7,7 +7,10 @@ module mod_selfc_wpol
   use mod_wpol
 
   implicit none
-  integer, private :: mdim
+  integer,    private :: mdim
+  complex(8), private :: zieta, zif
+
+  private :: omegaWeight
 
 contains
 
@@ -46,6 +49,19 @@ contains
 
     ! Setup working array dimensions and index mappings
     call set_wpol_indices()
+
+    zieta = zi*input%gw%selfenergy%swidth
+    select case (input%gw%freqgrid%fconv)
+      case('refreq')
+        ! real axis
+        zif = zone
+      case('imfreq')
+        ! imaginary axis
+        zif = zi
+      case default
+        write(*,*) "Accepted options: refreq or imfreq"
+        stop
+    end select    
 
     ! q->0 singularity treatment scheme
     select case (trim(input%gw%selfenergy%singularity))
@@ -104,14 +120,14 @@ contains
 
       ! Calculate W_{ij} in pole representation
       call calc_md_dmmd(iq)
-      call diagonalize_dmmd()
+      call diagonalize_dmmd(iq)
       call calc_wvck(iq)
       ! call calc_wmat()
       ! call print_wmat(iq)
-      ! call delete_coulomb_potential
+      call delete_coulomb_potential
       call clear_wpol()
 
-      ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega) 
+      ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega)
       call calc_selfc_wpol_q(iq)
       ! write(*,*) 'selfec_q=', sum(selfec)
 
@@ -144,26 +160,22 @@ contains
   subroutine calc_selfc_wpol_q(iq)
     implicit none
     integer, intent(in) :: iq
-    integer    :: ispn, ik, jk, n, iom, m, i
+    integer    :: ispn, ik, jk, jkp, n, iom, m, i
     integer(8) :: recl
     real(8)    :: wkq
-    complex(8) :: zt1, coefs1, coefs2
-    complex(8), allocatable :: wght(:,:,:)
-    complex(8), allocatable :: mw(:,:), mwt(:)
-    complex(8), allocatable :: zv1(:)
-    complex(8), allocatable :: zmat(:,:)
+    complex(8) :: zt1, zwt, coefs1, coefs2
+    ! complex(8), allocatable :: wght(:,:,:)
+    complex(8), allocatable :: mw(:,:), mwt(:), zwt0(:)
+
     complex(8), external    :: zdotc, zdotu
 
-    wkq = 1.d0/dble(kqset%nkpt)
-    coefs1 = sqrt(4.d0*pi/omega) * singc1
-    coefs2 = 4.d0*pi/omega * singc2
+    wkq    = 1.d0 / dble(kqset%nkpt)
+    coefs1 = singc1 * sqrt(4.d0*pi/omega)
+    coefs2 = singc2 * 4.d0*pi/omega
 
-    allocate(wght(nvck,mdim,freq%nomeg))
+    ! allocate(wght(nvck,mdim,freq%nomeg))
     allocate(mw(mdim,nvck),mwt(nvck))
-    if (Gamma) then
-      allocate(zv1(nvck))
-    end if
-
+    if (Gamma) allocate(zwt0(nvck))
     allocate(minmmat(1:mbsiz,ibgw:nbgw,1:mdim))
 
     ! loop over k-points
@@ -173,13 +185,12 @@ contains
       write(*,*)
       write(*,'(a,3i8)') '(mod_selfc_wpol::calc_selfc_wpol_q): rank, (iq, ik):', myrank, iq, ik
 
+      ! k-q point
+      jk = kqset%kqid(ik,iq)
+      jkp = kset%ik2ikp(jk)
+
       ! Product basis coefficients M^i_{nm}(k,q)
       call calc_minmkq(ik,iq,ispn)
-      ! write(*,*) 'minmmat=', sum(minmmat)
-      
-      ! \omega-dependent weights
-      call calc_weights(ik,iq,wght)
-      ! write(*,*) 'wght=', sum(wght)
 
       ! loop over states (diagonal matrix elements only)
       do n = ibgw, nbgw
@@ -189,12 +200,10 @@ contains
         &           zone, minmmat(1:mbsiz,n,:), mbsiz, wvck(1:mbsiz,:), mbsiz, &
         &           zzero, mw, mdim)
 
-        if (Gamma) then
-          ! second term in Eq. (2.41) ~ 1/q:  precalculate \sum l'
-          call zgemv('c', mbsiz, nvck, zone, wvck(1:mbsiz,:), mbsiz, &
-          &           minmmat(1:mbsiz,n,n), 1, zzero, zv1, 1)
-        end if
-      
+#ifdef USEOMP
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,zt1,m,i,zwt,mwt,zwt0)
+!$OMP DO
+#endif
         ! loop over frequencies
         do iom = 1, freq%nomeg
 
@@ -203,38 +212,44 @@ contains
           do m = 1, mdim
             ! apply frequency/state dependent prefactor
             do i = 1, nvck
-              mwt(i) = wght(i,m,iom)*mw(m,i)
+              zwt = omegaWeight(jkp,i,m,iom)
+              mwt(i) = zwt*mw(m,i)
+              if ((Gamma) .and. (m==n)) zwt0(i) = zwt
             end do
             ! sum over vck
             zt1 = zt1 + zdotc(nvck,mw(m,:),1,mwt,1)
           end do ! m
-
           selfec(n,iom,ik) = selfec(n,iom,ik)+wkq*zt1
 
           if (Gamma) then
             !---------------------------------------------------
             ! contribution from the first term: 1/q^2
             do i = 1, nvck
-              mwt(i) = wght(i,n,iom)*wvck(mbsiz+1,i)
+              mwt(i) = zwt0(i)*wvck(mbsiz+1,i)
             end do
             zt1 = coefs2*zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
             selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
             !---------------------------------------------------
             ! contribution from the second term: 1/q
             do i = 1, nvck
-              mwt(i) = wght(i,n,iom)*wvck(mbsiz+1,i)
+              mwt(i) = zwt0(i)*wvck(mbsiz+1,i)
             end do
-            zt1 = coefs1*zdotu(nvck,zv1,1,mwt,1)
+            zt1 = coefs1*zdotc(nvck,mw(n,:),1,mwt,1)
             selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
             !---------------------------------------------------
             ! contribution from the third term: 1/q
             do i = 1, nvck
-              mwt(i) = wght(i,n,iom)*conjg(wvck(mbsiz+1,i))
+              mwt(i) = zwt0(i)*conjg(wvck(mbsiz+1,i))
             end do
-            zt1 = coefs1*zdotc(nvck,zv1,1,mwt,1)
+            zt1 = coefs1*zdotu(nvck,mw(n,:),1,mwt,1)
             selfec(n,iom,ik) = selfec(n,iom,ik)+zt1
           end if
+          
         end do ! iom
+#ifdef USEOMP
+!$OMP END DO
+!$OMP END PARALLEL
+#endif
 
       end do ! n
 
@@ -242,84 +257,46 @@ contains
     end do ! nspinor
      
     deallocate(minmmat)
-    deallocate(wght)
-    deallocate(mw)
-    deallocate(mwt)
-    if (Gamma) deallocate(zv1)
+    deallocate(mw,mwt)
+    if (Gamma) deallocate(zwt0)
 
     return
   end subroutine
 
 
 !--------------------------------------------------------------------------------
-  subroutine calc_weights(ik,iq,wght)
+  complex(8) function omegaWeight(jkp,i,m,iom)
     implicit none
-    integer,    intent(in)  :: ik, iq
-    complex(8), intent(out) :: wght(nvck,mdim,freq%nomeg)
+    integer,    intent(in)  :: jkp, i, m, iom
     ! local
-    integer :: jkp, jk
-    integer :: i, icg, is, ia, ias, ic
-    integer :: m, iom
-    real(8) :: enk, sgn
-    complex(8) :: zieta, zif, zt1
+    integer    :: icg, is, ia, ias, ic
+    real(8)    :: enk, sgn
+    complex(8) :: zt1
 
-    ! zieta = zi*input%gw%swidth
-    zieta = zi*input%gw%selfenergy%swidth
-    select case (input%gw%freqgrid%fconv)
-      case('refreq')
-        ! real axis
-        zif = zone
-      case('imfreq')
-        ! imaginary axis
-        zif = zi
-      case default
-        write(*,*) "Accepted options: refreq or imfreq"
-        stop
-    end select
+    if (m <= nstse) then
+      enk = evalsv(m,jkp)
+    else
+      icg = m-nstse
+      is  = corind(icg,1)
+      ia  = corind(icg,2)
+      ias = idxas(ia,is)
+      ic  = corind(icg,3)
+      enk = evalcr(ic,ias)
+    end if
 
-    jk = kqset%kqid(ik,iq)
-    jkp = kset%ik2ikp(jk)
+    if ((m <= nomax).or.(m > nstse)) then
+      ! valence or core state
+      sgn = 1.d0
+    else
+      ! conduction state
+      sgn = -1.d0
+    end if
 
-    do iom = 1, freq%nomeg
-
-      do m = 1, mdim
-
-        if (m <= nstse) then
-          enk = evalsv(m,jkp)
-        else
-          icg = m-nstse
-          is  = corind(icg,1)
-          ia  = corind(icg,2)
-          ias = idxas(ia,is)
-          ic  = corind(icg,3)
-          enk = evalcr(ic,ias)
-        end if
-
-        if ((m <= nomax).or.(m > nstse)) then
-          ! valence or core state
-          sgn = 1.d0
-        else
-          ! conduction state
-          sgn = -1.d0
-        end if
-
-        do i = 1, nvck
-          if (abs(tvck(i)) > 1.d-8) then
-            ! zt1 = tvck(i) * ( zif*freq%freqs(iom) -enk + sgn*(tvck(i)-zieta) )
-            zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + sgn*(tvck(i)-zieta) )
-            zt1 = 0.5d0 / zt1
-          else
-            zt1 = 0.d0
-          end if
-          wght(i,m,iom) = zt1
-        end do ! i
-
-      end do ! m
-
-    end do ! iom
+    zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + sgn*(tvck(i)-zieta) )
+    omegaWeight = 0.5d0 / zt1
 
     return
-  end subroutine
+  end function  
 
 
 !--------------------------------------------------------------------------------
@@ -348,6 +325,7 @@ contains
     ! Calculate M^i_{nm}+M^i_{nc}
     call expand_evec(ik,'t')
     call expand_evec(jk,'c')
+
     call expand_products(ik,iq,ibgw,nbgw,-1,1,mdim,nstse,minmmat)
     
     deallocate(eveckalm)
