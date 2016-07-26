@@ -36,6 +36,7 @@ contains
     !=================
     ! Initialization
     !=================
+
     call init_gw
     call clean_gndstate
 
@@ -56,7 +57,7 @@ contains
     if (.not.input%gw%rpmat) then
       call calcpmatgw
     end if
-    
+
     ! Setup working array dimensions and index mappings
     call set_wpol_indices()
 
@@ -88,6 +89,7 @@ contains
       ! Calculate the bare Coulomb potential
       !======================================
       call calcbarcmb(iq)
+
       ! set v-diagonal MB
       call setbarcev(input%gw%barecoul%barcevtol)
 
@@ -132,7 +134,7 @@ contains
     end if
     mdim  = nstdf-numin+1
 
-    nvck = kqset%nkpt*nomax*(nstdf-numin+1)
+    nvck = kqset%nkpt*ndim*mdim
 
     ! map a -> {vck}
     if (allocated(a2vck)) deallocate(a2vck)

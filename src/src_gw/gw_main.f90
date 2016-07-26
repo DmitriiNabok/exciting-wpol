@@ -66,7 +66,7 @@ subroutine gw_main()
       end select
     end if
 #endif
-    
+
     !----------------
     ! Task selector
     !----------------

@@ -374,7 +374,6 @@ contains
     allocate(mwt(nvck))
     ! sum over states
     do m = nstse+1, mdim
-      write(*,*) 'sum_core'
       icg = m-nstse
       is  = corind(icg,1)
       ia  = corind(icg,2)

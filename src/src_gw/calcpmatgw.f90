@@ -2,7 +2,7 @@
 !!ROUTINE: calcpmatgw
 !!INTERFACE:
 !
-subroutine calcpmatgw
+subroutine calcpmatgw()
 !
 !!USES:
     use modinput
