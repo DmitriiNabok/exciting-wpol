@@ -1,5 +1,5 @@
 
-module mod_selfc_wpol
+module mod_wpol_selfc
 
   use modinput
   use modgw
@@ -10,15 +10,13 @@ module mod_selfc_wpol
   integer,    private :: mdim
   complex(8), private :: zieta, zif
 
-  public  :: test_selfc_wpol, print_selfc_wpol
+  public  :: test_wpol_selfc, print_wpol_selfc
   private :: calc_selfc_wpol_q, calc_minmkq
-
 
 contains
 
-
 !--------------------------------------------------------------------------------
-  subroutine test_selfc_wpol()
+  subroutine test_wpol_selfc()
     implicit none
     integer :: iq
 
@@ -146,7 +144,7 @@ contains
 #endif
 
     ! print to file the results
-    if (myrank==0) call print_selfc_wpol(selfec,1,ibgw,nbgw)
+    if (myrank==0) call print_wpol_selfc(selfec,1,ibgw,nbgw)
 
     ! delete index mapping arrays
     call del_wpol_indices()
@@ -435,7 +433,7 @@ contains
 
 
 !--------------------------------------------------------------------------------
-  subroutine print_selfc_wpol(zmat,ik,ib,nb)
+  subroutine print_wpol_selfc(zmat,ik,ib,nb)
     use m_getunit
     implicit none
     ! complex(8), intent(in) :: zmat(:,:,:)

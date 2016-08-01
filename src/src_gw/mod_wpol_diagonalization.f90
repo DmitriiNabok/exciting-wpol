@@ -1,21 +1,23 @@
 
-module zmatrix_diagonalization
+module mod_wpol_diagonalization
+
+  implicit none
 
 contains
 
 !--------------------------------------------------------------------------------
-  subroutine mkl_zheev(ndim,zevec,zeval)
+  subroutine mkl_zheev(ndim,zevec,deval)
     implicit none
     integer,    intent(in)    :: ndim
     complex(8), intent(inout) :: zevec(ndim,ndim)
-    complex(8), intent(out)   :: zeval(ndim)
+    real(8),    intent(out)   :: deval(ndim)
     ! local
     integer :: info, lwork, lrwork
     integer,    allocatable :: iwork(:)
     real(8),    allocatable :: rwork(:)
     complex(8), allocatable :: work(:)
     !
-    write(*,*) 'Info(zmatrix_diagonalization::mkl_zheev):'
+    write(*,*) 'Info(mod_zmatrix_diagonalization::mkl_zheev):'
     write(*,*) '   Diagonalization with ZHEEV'
     write(*,*)
     !
@@ -23,7 +25,7 @@ contains
     !
     lwork = -1
     allocate(work(1), rwork(1))
-    call zheev( 'vectors', 'lower', ndim, zevec, ndim, zeval, &
+    call zheev( 'vectors', 'lower', ndim, zevec, ndim, deval, &
     &            work, lwork, rwork, info )
     lwork  = int(work(1))
     lrwork = 3*ndim-2
@@ -32,24 +34,25 @@ contains
     ! solve eigenproblem
     !
     allocate(work(lwork), rwork(lrwork))
-    call zheev( 'vectors', 'lower', ndim, zevec, ndim, zeval, &
+    call zheev( 'vectors', 'lower', ndim, zevec, ndim, deval, &
     &            work, lwork, rwork, info )
     deallocate(work, rwork)
     if (info > 0) then
       write(*,*)
-      write(*,*) 'Error(zmatrix_diagonalization::mkl_zheev):'
+      write(*,*) 'Error(mod_zmatrix_diagonalization::mkl_zheev):'
       write(*,*) '    ZHEEV algorithm failed to compute eigenvalues'
       write(*,*) '    info = ', info
       stop
     end if
+    return
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine mkl_zheevr(ndim,zevec,zeval)
+  subroutine mkl_zheevr(ndim,zevec,deval)
     implicit none
     integer,    intent(in)    :: ndim
     complex(8), intent(inout) :: zevec(ndim,ndim)
-    complex(8), intent(out)   :: zeval(ndim)
+    real(8),    intent(out)   :: deval(ndim)
     ! local
     integer :: info, lwork, lrwork, liwork, lwmax
     integer :: il, iu, m
@@ -58,14 +61,11 @@ contains
     real(8),    allocatable :: rwork(:)
     complex(8), allocatable :: work(:), z(:,:)
     !
-    write(*,*) 'Info(zmatrix_diagonalization::mkl_zheev):'
+    write(*,*) 'Info(mod_zmatrix_diagonalization::mkl_zheevr):'
     write(*,*) '   Diagonalization with ZHEEVR'
     write(*,*)
     ! Negative ABSTOL means using the default value
     abstol = -1.0 
-    ! set vl, vu to compute eigenvalues in half-open (vl,vu] interval
-    vl = 0.0
-    vu = 100.0
     !
     ! Query the optimal workspace.
     !
@@ -75,23 +75,19 @@ contains
     allocate( z(ndim,ndim), isuppz(2*ndim) )
     allocate( work(1), rwork(1), iwork(1) )
     call zheevr( 'vectors', 'all', 'lower', ndim, zevec, ndim, &
-    &            vl, vu, il, iu, abstol, m, zeval, z, ndim, isuppz, &
+    &            vl, vu, il, iu, abstol, m, deval, z, ndim, isuppz, &
     &            work, lwork, rwork, lrwork, iwork, liwork, &
     &            info )
-    lwork  = min( lwmax, int(work(1)) )
-    lrwork = min( lwmax, int(rwork(1)) )
-    liwork = min( lwmax, iwork(1) )
+    lwork  = int(work(1))
+    lrwork = int(rwork(1))
+    liwork = iwork(1)
     deallocate( work, rwork, iwork )
     !
     ! solve eigenproblem.
     !
-    write(*,*) '    lwork = ',  lwork
-    write(*,*) '    lrwork = ', lrwork
-    write(*,*) '    liwork = ', liwork
-    write(*,*)
     allocate( work(lwork), rwork(lrwork), iwork(liwork) )
     call zheevr( 'vectors', 'all', 'lower', ndim, zevec, ndim, &
-    &            vl, vu, il, iu, abstol, m, zeval, z, ndim, isuppz, &
+    &            vl, vu, il, iu, abstol, m, deval, z, ndim, isuppz, &
     &            work, lwork, rwork, lrwork, iwork, liwork, &
     &            info )
     zevec(:,:) = z(:,:)
@@ -99,13 +95,12 @@ contains
     deallocate(z, isuppz)
     if (info > 0) then
       write(*,*)
-      write(*,*) 'Error(mod_wpol::diagonalize_dmmd):'
+      write(*,*) 'Error(mod_zmatrix_diagonalization::mkl_zheevr):'
       write(*,*) '    ZHEEVR algorithm failed to compute eigenvalues'
       write(*,*) '    info = ', info
       stop
     end if
-
+    return
   end subroutine
-
 
 end module

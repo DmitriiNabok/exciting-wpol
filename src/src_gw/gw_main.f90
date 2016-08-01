@@ -8,8 +8,8 @@ subroutine gw_main()
     use mod_mpi_gw
     use m_getunit
     use mod_hdf5
-    use mod_wpol
-    use mod_selfc_wpol
+    use mod_wpol,       only : test_wpol
+    use mod_wpol_selfc, only : test_wpol_selfc
     
     implicit none
     real(8) :: tstart, tend
@@ -193,7 +193,7 @@ subroutine gw_main()
             call test_wpol()
 
         case('selfc_wpol')
-            call test_selfc_wpol()
+            call test_wpol_selfc()
 
     end select
     
