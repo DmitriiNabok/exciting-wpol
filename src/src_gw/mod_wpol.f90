@@ -610,7 +610,7 @@ contains
 
     write(fname,'("WMAT-iom-q",I4.4,".OUT")') iq
     open(fid, File=trim(fname), Action='WRITE')
-    do im = mbsiz-100, mbsiz, 10
+    do im = 1, mbsiz, 10
       do iom = 1, nomeg
         write(fid,'(3f16.6)') freq%freqs(iom), zmat(im,im,iom)
       end do

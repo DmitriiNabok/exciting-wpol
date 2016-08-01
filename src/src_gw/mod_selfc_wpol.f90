@@ -43,7 +43,7 @@ contains
     &                  myrank_row, &
     &                  kqset%nkpt, 1, &
     &                  iqstart, iqend)
-    write(*,*) "myrank_row, iqstart, iqend =", myrank_row, iqstart, iqend
+    ! write(*,*) "myrank_row, iqstart, iqend =", myrank_row, iqstart, iqend
 #else
     iqstart = 1
     iqend = kqset%nkpt
@@ -104,7 +104,6 @@ contains
     do iq = iqstart, iqend
 
       write(*,*)
-      write(*,*)
       write(*,*) '(mod_selfc_wpol::test_selfc_wpol) q-point cycle, iq = ', iq
     
       Gamma = gammapoint(kqset%vqc(:,iq))
@@ -142,10 +141,8 @@ contains
     end do ! q-points
 
 #ifdef MPI
-    if ((nproc_row>1).and.(myrank_col==0)) then
       call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
       write(*,*) "sum selfec done"
-    end if
 #endif
 
     ! print to file the results
@@ -263,6 +260,7 @@ contains
 
     do i = 1, nvck
       zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + sign(1,nomax-n)*(tvck(i)-zieta) )
+      ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + sign(1,nomax-n)*(tvck(i)-zieta) )
       zt1 = 0.5d0 / zt1
       mwt(i) = zt1*wvck(mbsiz+1,i)
     end do
@@ -279,6 +277,7 @@ contains
     ! contribution from the third term: 1/q
     do i = 1, nvck
       zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + sign(1,nomax-n)*(tvck(i)-zieta) )
+      ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + sign(1,nomax-n)*(tvck(i)-zieta) )
       zt1 = 0.5d0 / zt1
       mwt(i) = zt1*conjg(wvck(mbsiz+1,i))
     end do
@@ -312,6 +311,7 @@ contains
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
         zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + (tvck(i)-zieta) )
+        ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + (tvck(i)-zieta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
@@ -345,6 +345,7 @@ contains
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
         zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) - (tvck(i)-zieta) )
+        ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk - (tvck(i)-zieta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
@@ -383,6 +384,7 @@ contains
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
         zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + (tvck(i)-zieta) )
+        ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + (tvck(i)-zieta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
