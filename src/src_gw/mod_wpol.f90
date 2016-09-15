@@ -21,10 +21,11 @@ module mod_wpol
   complex(8), allocatable :: wvck(:,:)
   public :: tvck, wvck
 
+  real(8),    allocatable :: d(:)
   complex(8), allocatable :: md(:,:)
   complex(8), allocatable :: dmmd(:,:)
   complex(8), allocatable :: wij(:,:,:)
-  private :: md, dmmd, wij
+  private :: d, md, dmmd, wij
 
 contains
 
@@ -178,10 +179,7 @@ contains
     real(8)    :: de
     real(8)    :: q0eps(3), modq0
     complex(8) :: zt1, wkp
-
     character(80) :: fname
-
-    real(8),    allocatable :: d(:)
     complex(8), allocatable :: evecsv(:,:,:)
 
     mbdim = mbsiz
@@ -210,6 +208,8 @@ contains
     end if
 
     ! global arrays
+    allocate(d(nvck))
+    d(:) = 0.d0
     allocate(md(mbdim,nvck))
     md(:,:) = 0.d0  
     allocate(dmmd(nvck,nvck))
@@ -222,7 +222,6 @@ contains
     allocate(eveckp(nmatmax,nstsv))    
     allocate(evecsv(nmatmax,nstsv,nspinor))
     allocate(minmmat(mbsiz,ndim,numin:nstdf))
-    allocate(d(nvck))
 
     wkp = 2.d0/sqrt(dble(kqset%nkpt))
 
@@ -325,7 +324,6 @@ contains
     do i = 1, nvck
       dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
     end do
-    deallocate(d)
 
     ! print DMMD matrix
     ! write(fname,'("dmmd-q",I4.4,".dat")') iq
@@ -344,6 +342,7 @@ contains
 !--------------------------------------------------------------------------------
   subroutine diagonalize_dmmd(iq)
     use mod_wpol_diagonalization
+    use mod_wpol_pert
     implicit none
     integer, intent(in) :: iq
     integer :: i
@@ -358,6 +357,8 @@ contains
 
     ! call mkl_zheev(nvck,dmmd,tvck)
     call mkl_zheevr(nvck,dmmd,tvck)
+
+    ! call wpol_pert(nvck,d,dmmd,tvck)
 
     ! print \Lambda matrix
     ! write(fname,'("lambda-q",I4.4,".OUT")') iq
@@ -452,6 +453,7 @@ contains
 
 !--------------------------------------------------------------------------------
   subroutine clear_wpol()
+    if (allocated(d))    deallocate(d)
     if (allocated(md))   deallocate(md)
     if (allocated(dmmd)) deallocate(dmmd)
     if (allocated(wij))  deallocate(wij)

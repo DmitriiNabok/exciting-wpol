@@ -244,7 +244,23 @@
                   </xs:documentation></xs:annotation>
                 </xs:attribute>
               </xs:complexType>
-            </xs:element>            
+            </xs:element>
+
+            <xs:element ex:importance="expert" ex:unit="" name="gwplan" minOccurs="0" maxOccurs="1">
+              <xs:annotation>
+                <xs:documentation>GW task schedule</xs:documentation>
+              </xs:annotation>
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element ex:importance="expert" ex:unit="" name="task" minOccurs="0" maxOccurs="unbounded">
+                    <xs:complexType>
+                      <xs:attribute ex:importance="expert" ex:unit="" name="name" type="xs:string" use="required">
+                      </xs:attribute>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
             
           </xs:all>
 

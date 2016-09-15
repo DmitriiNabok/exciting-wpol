@@ -4,7 +4,7 @@
 !
 !!INTERFACE:
 !
-subroutine readselfx
+subroutine readselfx()
 !
 !!DESCRIPTION:
 ! 

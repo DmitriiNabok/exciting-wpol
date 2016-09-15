@@ -142,17 +142,7 @@ subroutine calcvxcnn
         call hdf5_write(fgwh5,path,"vxcnn",vxcnn(1,ik),(/nbandsgw/))
       end do
 #else    
-    ! print results into file VXCNN.OUT
-      call getunit(fid)
-      open(fid,file='VXCNN.OUT',form='FORMATTED',status='UNKNOWN')
-      do ik = 1, kset%nkpt
-        write(fid,'("ik=",i4,"    vkl=",3f8.4)') ik, kset%vkl(:,ik)
-        do i = ibgw, nbgw
-          write(fid,'(i4,2f12.4)') i, vxcnn(i,ik)
-        end do
-        write(fid,*)
-      end do
-      close(fid)
+      call write_vxcnn(kset,ibgw,nbgw,vxcnn)
 #endif
     end if
       

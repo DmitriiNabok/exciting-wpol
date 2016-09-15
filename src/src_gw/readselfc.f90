@@ -4,7 +4,7 @@
 !
 !!INTERFACE:
 !
-subroutine readselfc
+subroutine readselfc()
 !
 !!DESCRIPTION:
 !

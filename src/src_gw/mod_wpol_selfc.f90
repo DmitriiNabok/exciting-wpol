@@ -10,15 +10,17 @@ module mod_wpol_selfc
   integer,    private :: mdim
   complex(8), private :: zieta, zif
 
-  public  :: test_wpol_selfc, print_wpol_selfc
+  public  :: task_wpol_selfc
   private :: calc_selfc_wpol_q, calc_minmkq
 
 contains
 
 !--------------------------------------------------------------------------------
-  subroutine test_wpol_selfc()
+  subroutine task_wpol_selfc()
+    use m_getunit
+    use mod_selfenergy, only: write_selfecnn
     implicit none
-    integer :: iq
+    integer :: iq, fid
 
     !=================
     ! Initialization
@@ -140,15 +142,21 @@ contains
 
 #ifdef MPI
       call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
-      write(*,*) "sum selfec done"
 #endif
 
     ! print to file the results
-    if (myrank==0) call print_wpol_selfc(selfec,1,ibgw,nbgw)
+    if (myrank==0) call write_selfecnn(kset,freq,ibgw,nbgw,selfec)
 
     ! delete index mapping arrays
     call del_wpol_indices()
     deallocate(selfec)
+    call delete_freqgrid(freq)
+    call delete_k_vectors(kset)
+    call delete_G_vectors(Gset)
+    call delete_Gk_vectors(Gkset)
+    call delete_kq_vectors(kqset)
+    call delete_Gk_vectors(Gqset)
+    call delete_Gk_vectors(Gqbarc)
 
     return
   end subroutine
@@ -160,14 +168,13 @@ contains
     integer    :: ispn, ik, jk, jkp, n, iom, m, i
     integer(8) :: recl
     real(8)    :: wkq
-    complex(8) :: zt1, zwt, coefs1, coefs2, sigma(2)
+    complex(8) :: zt1, zwt, coefs1, coefs2, sigma1, sigma2
     complex(8), allocatable :: mw(:,:)
 
     wkq    = 1.d0 / dble(kqset%nkpt)
     coefs1 = singc1 * sqrt(4.d0*pi/omega)
     coefs2 = singc2 * 4.d0*pi/omega
 
-    ! allocate(wght(nvck,mdim,freq%nomeg))
     allocate(mw(mdim,nvck))
     allocate(minmmat(1:mbsiz,ibgw:nbgw,1:mdim))
 
@@ -213,15 +220,15 @@ contains
 
         if (Gamma) then
 #ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,sigma)
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,sigma1,sigma2)
 !$OMP DO
 #endif          
           ! loop over frequencies
           do iom = 1, freq%nomeg
-            call sum_singular(n,jkp,iom,mw,sigma)
+            call sum_singular(n,jkp,iom,mw,sigma1,sigma2)
             selfec(n,iom,ik) = selfec(n,iom,ik)+ &
-            &                  coefs2*sigma(2) + &
-            &                  coefs1*sigma(1)
+            &                  coefs1*sigma1   + &
+            &                  coefs2*sigma2
           end do
 #ifdef USEOMP
 !$OMP END DO
@@ -241,11 +248,11 @@ contains
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine sum_singular(n,jkp,iom,mw,sigma)
+  subroutine sum_singular(n,jkp,iom,mw,sigma1,sigma2)
     implicit none
     integer,    intent(in) :: n, jkp, iom
     complex(8), intent(in) :: mw(mdim,nvck)
-    complex(8)             :: sigma(2)
+    complex(8)             :: sigma1, sigma2
     ! local
     integer    :: m, i
     real(8)    :: enk
@@ -264,12 +271,12 @@ contains
     end do
 
     ! contribution from the first term: 1/q^2
-    sigma(2) = zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
+    sigma2 = zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
     
     !---------------------------------------------------
     ! contribution from the second term: 1/q
     zt1 = zdotc(nvck,mw(n,:),1,mwt,1)
-    sigma(1) = zt1
+    sigma1 = zt1
     
     !---------------------------------------------------
     ! contribution from the third term: 1/q
@@ -280,7 +287,7 @@ contains
       mwt(i) = zt1*conjg(wvck(mbsiz+1,i))
     end do
     zt1 = zdotu(nvck,mw(n,:),1,mwt,1)
-    sigma(1) = sigma(1) + zt1
+    sigma1 = sigma1 + zt1
 
     deallocate(mwt)
 
@@ -427,44 +434,6 @@ contains
     deallocate(eveckpalm)
     deallocate(eveck)
     deallocate(eveckp)
-
-    return
-  end subroutine
-
-
-!--------------------------------------------------------------------------------
-  subroutine print_wpol_selfc(zmat,ik,ib,nb)
-    use m_getunit
-    implicit none
-    ! complex(8), intent(in) :: zmat(:,:,:)
-    complex(8), intent(in) :: zmat(ibgw:nbgw,freq%nomeg,kset%nkpt)
-    integer,    intent(in) :: ik
-    integer,    intent(in) :: ib, nb
-
-    integer :: iom, n
-    integer :: fid1, fid2
-    character(80) :: frmt
-
-    ! write(*,*) 'SIZE=', size(zmat,dim=1), size(zmat,dim=2), size(zmat,dim=3)
-
-    call getunit(fid1)
-    open(fid1, File='SELFC-WPOL-Re.OUT', Action='WRITE')
-    call getunit(fid2)
-    open(fid2, File='SELFC-WPOL-Im.OUT', Action='WRITE')
-
-    n = nb-ib+1
-    write(frmt,'("(",i8,"f14.6)")') 1+n
-    ! write(*,*) trim(frmt)
-
-    write(fid1,*) '# ik = ', ik
-    write(fid2,*) '# ik = ', ik
-    do iom = 1, freq%nomeg
-      write(fid1,trim(frmt)) freq%freqs(iom), dble(zmat(ib:nb,iom,ik))
-      write(fid2,trim(frmt)) freq%freqs(iom), imag(zmat(ib:nb,iom,ik))
-    end do
-
-    close(fid1)
-    close(fid2)
 
     return
   end subroutine

@@ -9,7 +9,7 @@ subroutine gw_main()
     use m_getunit
     use mod_hdf5
     use mod_wpol,       only : test_wpol
-    use mod_wpol_selfc, only : test_wpol_selfc
+    use mod_wpol_selfc, only : task_wpol_selfc
     
     implicit none
     real(8) :: tstart, tend
@@ -31,8 +31,7 @@ subroutine gw_main()
     !---------------------
     if (rank==0) then
         call getunit(fgw)
-        open(fgw,File='GW_INFO.OUT')
-        ! open(fgw,File='GW_INFO.OUT',Access='Append')
+        open(fgw,File='GW_INFO.OUT',Access='Append')
         if (input%gw%debug) then
             call getunit(fdebug)
             open(fdebug,File='debug.info',Action='Write')
@@ -193,7 +192,13 @@ subroutine gw_main()
             call test_wpol()
 
         case('selfc_wpol')
-            call test_wpol_selfc()
+            call task_wpol_selfc()
+
+        case('selfx')
+            call task_selfx()
+
+        case('sfunc_wpol')
+            call plot_spectrFunc()
 
     end select
     

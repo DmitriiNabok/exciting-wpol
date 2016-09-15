@@ -104,7 +104,7 @@ contains
     end subroutine
         
     !---------------------------------------------------------------------------
-    subroutine delete_selfenergy
+    subroutine delete_selfenergy()
       if (allocated(evalks)) deallocate(evalks)
       if (allocated(evalqp)) deallocate(evalqp)
       if (allocated(selfex)) deallocate(selfex)
@@ -182,5 +182,159 @@ contains
         end if
       end if
     end subroutine
+
+!--------------------------------------------------------------------
+! exchange selfenergy
+!--------------------------------------------------------------------
+    subroutine write_selfexnn(kset,ibgw,nbgw,zmat)
+      use m_getunit
+      use mod_kpointset
+      implicit none
+      type(k_set), intent(in) :: kset
+      integer,     intent(in) :: ibgw, nbgw
+      complex(8),  intent(in) :: zmat(ibgw:nbgw,kset%nkpt)
+      integer :: fid, ik, ie
+
+      call getunit(fid)
+      ! text format
+      open(fid,file='SELFX.DAT',form='FORMATTED',status='UNKNOWN')
+      do ik = 1, kset%nkpt
+        write(fid,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
+        do ie = ibgw, nbgw
+          write(fid,'(i6,f18.6)') ie, dble(zmat(ie,ik))
+        end do
+        write(fid,*); write(fid,*)
+      end do
+      close(fid)
+      ! fortran binary format
+      open(fid,file='SELFX.OUT',form='UNFORMATTED',status='UNKNOWN')
+      write(fid) ibgw, nbgw, kset%nkpt, zmat
+      close(fid)
+      return
+    end subroutine
+
+    subroutine read_selfexnn(kset,ibgw,nbgw,zmat)
+      use m_getunit
+      use mod_kpointset
+      implicit none
+      type(k_set), intent(in)  :: kset
+      integer,     intent(in)  :: ibgw, nbgw
+      complex(8),  intent(out) :: zmat(ibgw:nbgw,kset%nkpt)
+      integer :: ib, nb, nk
+      integer :: fid
+
+      call getunit(fid)
+      open(fid,file='SELFX.OUT',form='UNFORMATTED',status='UNKNOWN')
+      read(fid) ib, nb, nk
+      close(fid)
+
+      if (nk /= kset%nkpt) then
+        write(*,*)'ERROR(mod_selfenergy::read_selfexnn): Wrong number of k-points'
+        write(*,*)'    nk=', nk, '    nkpt=', kset%nkpt
+        stop
+      end if
+
+      if ((ib /= ibgw).or.(nb /= nbgw)) then
+        write(*,*)'ERROR(mod_selfenergy::read_selfexnn): Different number of bands'
+        write(*,*)'    ib=',   ib, '    nb=', nb
+        write(*,*)'  ibgw=', ibgw, '  nbgw=', nbgw
+        stop
+      end if
     
+      open(fid,file='SELFX.OUT',form='UNFORMATTED',status='UNKNOWN')
+      read(fid) ib, nb, nk, zmat
+      close(fid)
+
+      return
+    end subroutine
+
+!--------------------------------------------------------------------
+! correlation selfenergy
+!--------------------------------------------------------------------
+    subroutine write_selfecnn(kset,freq,ibgw,nbgw,zmat)
+      use m_getunit
+      use mod_kpointset
+      use mod_frequency
+      implicit none
+      type(k_set),     intent(in) :: kset
+      type(frequency), intent(in) :: freq
+      integer,         intent(in) :: ibgw, nbgw
+      complex(8),      intent(in) :: zmat(ibgw:nbgw,freq%nomeg,kset%nkpt)
+      integer :: iom, n, ik
+      integer :: fid1, fid2
+      character(80) :: frmt
+
+      ! text format
+      n = nbgw-ibgw+1
+      write(frmt,'("(",i8,"f14.6)")') 1+n
+      ! write(*,*) trim(frmt)
+
+      call getunit(fid1)
+      open(fid1, File='SELFC-WPOL-Re.DAT', Action='WRITE')
+      call getunit(fid2)
+      open(fid2, File='SELFC-WPOL-Im.DAT', Action='WRITE')
+      do ik = 1, kset%nkpt
+        write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
+        write(fid2,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
+        do iom = 1, freq%nomeg
+          write(fid1,trim(frmt)) freq%freqs(iom), dble(zmat(:,iom,ik))
+          write(fid2,trim(frmt)) freq%freqs(iom), imag(zmat(:,iom,ik))
+        end do
+        write(fid1,*); write(fid1,*)
+        write(fid2,*); write(fid2,*)
+      end do
+      close(fid1)
+      close(fid2)
+
+      ! binary format
+      open(fid1,file='SELFC.OUT',form='UNFORMATTED',status='UNKNOWN')
+      write(fid1) ibgw, nbgw, freq%nomeg, kset%nkpt, zmat
+      close(fid1)
+
+      return
+    end subroutine
+    
+    subroutine read_selfecnn(kset,freq,ibgw,nbgw,zmat)
+      use m_getunit
+      use mod_kpointset
+      use mod_frequency
+      implicit none
+      type(k_set),     intent(in)  :: kset
+      type(frequency), intent(in)  :: freq
+      integer,         intent(in)  :: ibgw, nbgw
+      complex(8),      intent(out) :: zmat(ibgw:nbgw,freq%nomeg,kset%nkpt)
+      integer :: ib, nb, nk, no
+      integer :: fid
+
+      call getunit(fid)
+
+      open(fid,file='SELFC.OUT',form='UNFORMATTED',status='UNKNOWN')
+      read(fid) ib, nb, no, nk
+      close(fid)
+
+      if (nk.ne.kset%nkpt) then
+        write(*,*)'ERROR(mod_selfenergy::read_selfecnn)): Wrong number of k-points'
+        write(*,*)'    nk=', nk, '    nkpt=', kset%nkpt
+        stop
+      end if
+
+      if ((ib.ne.ibgw).or.(nb.ne.nbgw)) then
+        write(*,*)'WARNING(mod_selfenergy::read_selfecnn)): Different number of bands'
+        write(*,*)'    ib=',   ib, '    nb=', nb
+        write(*,*)'  ibgw=', ibgw, '  nbgw=', nbgw
+        stop
+      end if
+
+      if (no.ne.freq%nomeg) then
+        write(*,*)'ERROR(mod_selfenergy::read_selfecnn)): Wrong number of frequencies'
+        write(*,*)'    no=', no, '    freq%nomeg=', freq%nomeg
+        stop
+      end if
+    
+      open(fid,file='SELFC.OUT',form='UNFORMATTED',status='UNKNOWN')
+      read(fid) ib, nb, no, nk, zmat
+      close(fid)
+     
+      return
+    end subroutine
 end module
