@@ -60,7 +60,8 @@ subroutine plot_spectrFunc()
         scr = dble(zvec(ie))
         sci = imag(zvec(ie))
         tvec(ie) = om-enk-scr+vxc
-        sfunc(ie,iom,ik) = 1.d0/pi*abs(sci)/(tvec(ie)**2+sci**2)
+        ! sfunc(ie,iom,ik) = 1.d0/pi*abs(sci)/(tvec(ie)**2+sci**2)
+        sfunc(ie,iom,ik) = abs( 1.d0/pi * 1.d0/(om-enk-zvec(ie)+vxc) )
       end do
       write(fid1,trim(frmt)) om, sfunc(:,iom,ik)
       write(fid2,trim(frmt)) om, dble(zvec)
