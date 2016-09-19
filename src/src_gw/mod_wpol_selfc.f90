@@ -8,7 +8,7 @@ module mod_wpol_selfc
 
   implicit none
   integer,    private :: mdim
-  complex(8), private :: zieta, zif
+  real(8),    private :: eta
 
   public  :: task_wpol_selfc
   private :: calc_selfc_wpol_q, calc_minmkq
@@ -21,6 +21,9 @@ contains
     use mod_selfenergy, only: write_selfecnn
     implicit none
     integer :: iq, fid
+
+    ! eta = input%gw%selfenergy%swidth
+    eta = 1.d-8
 
     !=================
     ! Initialization
@@ -51,19 +54,6 @@ contains
 
     ! Setup working array dimensions and index mappings
     call set_wpol_indices()
-
-    zieta = zi*input%gw%selfenergy%swidth
-    select case (input%gw%freqgrid%fconv)
-      case('refreq')
-        ! real axis
-        zif = zone
-      case('imfreq')
-        ! imaginary axis
-        zif = zi
-      case default
-        write(*,*) "Accepted options: refreq or imfreq"
-        stop
-    end select    
 
     ! q->0 singularity treatment scheme
     select case (trim(input%gw%selfenergy%singularity))
@@ -255,7 +245,7 @@ contains
     complex(8)             :: sigma1, sigma2
     ! local
     integer    :: m, i
-    real(8)    :: enk
+    real(8)    :: enk, om
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu
@@ -263,9 +253,10 @@ contains
     enk = evalsv(n,jkp)
     allocate(mwt(nvck))
 
+    om = freq%freqs(iom)
+
     do i = 1, nvck
-      zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + sign(1,nomax-n)*(tvck(i)-zieta) )
-      ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + sign(1,nomax-n)*(tvck(i)-zieta) )
+      zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
       zt1 = 0.5d0 / zt1
       mwt(i) = zt1*wvck(mbsiz+1,i)
     end do
@@ -281,11 +272,11 @@ contains
     !---------------------------------------------------
     ! contribution from the third term: 1/q
     do i = 1, nvck
-      zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + sign(1,nomax-n)*(tvck(i)-zieta) )
-      ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + sign(1,nomax-n)*(tvck(i)-zieta) )
+      zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
       zt1 = 0.5d0 / zt1
       mwt(i) = zt1*conjg(wvck(mbsiz+1,i))
     end do
+
     zt1 = zdotu(nvck,mw(n,:),1,mwt,1)
     sigma1 = sigma1 + zt1
 
@@ -302,21 +293,23 @@ contains
     complex(8)             :: zsum
     ! local
     integer    :: m, i
-    real(8)    :: enk
+    real(8)    :: enk, om
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu
 
     zsum = 0.d0
     allocate(mwt(nvck))
+    mwt(:) = 0.d0
+
+    om = freq%freqs(iom)
 
     ! sum over states
     do m = 1, nomax
       enk = evalsv(m,jkp)
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
-        zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) + (tvck(i)-zieta) )
-        ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + (tvck(i)-zieta) )
+        zt1 = tvck(i) * ( om - enk + (tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
@@ -336,21 +329,23 @@ contains
     complex(8)             :: zsum
     ! local
     integer    :: m, i
-    real(8)    :: enk
+    real(8)    :: enk, om
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu
 
     zsum = 0.d0
     allocate(mwt(nvck))
+    mwt(:) = 0.d0
+
+    om = freq%freqs(iom)
 
     ! sum over states
     do m = nomax+1, nstse
       enk = evalsv(m,jkp)
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
-        zt1 = tvck(i) * ( zif*freq%freqs(iom) - (enk-efermi) - (tvck(i)-zieta) )
-        ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk - (tvck(i)-zieta) )
+        zt1 = tvck(i) * ( om - enk - (tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
@@ -371,10 +366,12 @@ contains
     ! local
     integer    :: m, i
     integer    :: icg, is, ia, ias, ic
-    real(8)    :: enk
+    real(8)    :: enk, om
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu
+
+    om = freq%freqs(iom)
 
     zsum = 0.d0
     allocate(mwt(nvck))
@@ -388,8 +385,7 @@ contains
       enk = evalcr(ic,ias)
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
-        zt1 = tvck(i) * ( zif*freq%freqs(iom) -(enk-efermi) + (tvck(i)-zieta) )
-        ! zt1 = tvck(i) * ( zif*freq%freqs(iom) - enk + (tvck(i)-zieta) )
+        zt1 = tvck(i) * ( om - enk + (tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do

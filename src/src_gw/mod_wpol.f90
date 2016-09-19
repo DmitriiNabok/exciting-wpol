@@ -11,6 +11,8 @@ module mod_wpol
   integer, private :: mbdim
   integer, public  :: nvck
 
+  real(8), parameter, private :: eta=1.d-8
+
   ! index mapping array
   integer,    allocatable :: a2vck(:,:)
   integer,    allocatable :: vck2a(:,:,:)
@@ -404,30 +406,20 @@ contains
   subroutine calc_wmat()
     implicit none
     integer    :: iom, i, im
-    complex(8) :: zt1, zif, zieta
+    real(8)    :: om
+    complex(8) :: zt1
 
     ! W_{ij}(q,\omega) (2.22) (regular part only)
     allocate(wij(mbsiz,mbsiz,freq%nomeg))
 
-    zieta = zi*input%gw%scrcoul%swidth
-    select case (input%gw%freqgrid%fconv)
-      case('refreq')
-        ! real axis
-        zif = zone
-      case('imfreq')
-        ! imaginary axis
-        zif = zi
-      case default
-        write(*,*) "Accepted options: refreq or imfreq"
-        stop
-    end select
-
     do iom = 1, freq%nomeg
 
+      om = freq%freqs(iom)
+
       do i = 1, nvck
-        zt1 =  0.5d0 / tvck(i) *                        &
-        &    ( 1.d0/(zif*freq%freqs(iom)-tvck(i)+zieta) &
-        &     -1.d0/(zif*freq%freqs(iom)+tvck(i)-zieta) )
+        zt1 =  0.5d0 / tvck(i) *        &
+        &    ( 1.d0/(om-tvck(i)+zi*eta) &
+        &     -1.d0/(om+tvck(i)-zi*eta) )
         md(:,i) = zt1*wvck(:,i) ! reuse the array md
       end do
 

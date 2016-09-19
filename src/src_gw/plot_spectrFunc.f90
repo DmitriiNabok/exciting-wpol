@@ -14,7 +14,7 @@ subroutine plot_spectrFunc()
   real(8),    allocatable :: tvec(:)
   complex(8), allocatable :: zvec(:)
   complex(8) :: sigma
-  real(8)    :: scr, sci, div, enk, vxc, om
+  real(8)    :: scr, sci, div, enk, vxc, om, eta
 
   input%gw%skipgnd = .true.
   call init_gw
@@ -48,20 +48,21 @@ subroutine plot_spectrFunc()
   call getunit(fid4)
   open(fid4,file='DF.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
 
+  eta = input%gw%selfenergy%swidth
+
   allocate(tvec(ibgw:nbgw),zvec(ibgw:nbgw))
   do ik = 1, kset%nkpt
     write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
     do iom = 1, freq%nomeg
-      om  = freq%freqs(iom)-efermi
+      om  = freq%freqs(iom)
       do ie = ibgw, nbgw
-        enk = evalsv(ie,ik)-efermi
+        enk = evalsv(ie,ik)
         vxc = dble(vxcnn(ie,ik))
         zvec(ie) = selfex(ie,ik)+selfec(ie,iom,ik)
         scr = dble(zvec(ie))
-        sci = imag(zvec(ie))
+        sci = imag(zvec(ie)) + eta
         tvec(ie) = om-enk-scr+vxc
-        ! sfunc(ie,iom,ik) = 1.d0/pi*abs(sci)/(tvec(ie)**2+sci**2)
-        sfunc(ie,iom,ik) = abs( 1.d0/pi * 1.d0/(om-enk-zvec(ie)+vxc) )
+        sfunc(ie,iom,ik) = 1.d0/pi*abs(sci)/(tvec(ie)**2+sci**2)
       end do
       write(fid1,trim(frmt)) om, sfunc(:,iom,ik)
       write(fid2,trim(frmt)) om, dble(zvec)
@@ -80,5 +81,59 @@ subroutine plot_spectrFunc()
   close(fid3)
   close(fid4)
 
+  !--------------------
+  ! Gaussian smearing
+  !--------------------
+  open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  do ik = 1, kset%nkpt
+    do ie = ibgw, nbgw
+      call apply_Gaussian_smearing(freq%nomeg,freq%freqs,sfunc(ie,:,ik))
+    end do
+    do iom = 1, freq%nomeg
+      write(fid1,trim(frmt)) freq%freqs(iom), sfunc(:,iom,ik)
+    end do
+    write(fid1,*); write(fid1,*)
+  end do
+  close(fid1)
+
   return
+
+contains
+
+  subroutine apply_Gaussian_smearing(n,x,y)
+    implicit none
+    integer, intent(in)    :: n
+    real(8), intent(in)    :: x(n)
+    real(8), intent(inout) :: y(n)
+    integer :: i, j
+    real(8) :: s
+    real(8) :: z(n)
+
+    s = input%gw%selfenergy%SpectralFunctionPlot%eta
+
+    z = 0.d0
+    do i = 1, n
+      ! z(i) = gaussian(x(i), 0.d0, s, 1.d0)
+      if (y(i) > 1.d-6) then
+        do j = 1, n
+          z(j) = z(j) + gaussian(x(j), x(i), s, y(i))
+        end do
+      end if
+    end do
+
+    y = z
+
+  end subroutine
+
+  real(8) function gaussian(x,m,s,a)
+    real(8), intent(in) :: x
+    real(8), intent(in) :: m
+    real(8), intent(in) :: s
+    real(8), intent(in) :: a
+    ! gaussian = a/(2.d0*pi*s**2)**0.5*exp(-(x-m)**2/(2.d0*s**2))
+    gaussian = a*exp(-(x-m)**2/(2.d0*s**2))
+    return
+  end function
+
+
 end subroutine
