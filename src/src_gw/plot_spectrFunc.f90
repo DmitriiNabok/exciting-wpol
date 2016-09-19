@@ -48,7 +48,8 @@ subroutine plot_spectrFunc()
   call getunit(fid4)
   open(fid4,file='DF.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
 
-  eta = input%gw%selfenergy%swidth
+  ! eta = input%gw%selfenergy%swidth
+  eta = 0.d0
 
   allocate(tvec(ibgw:nbgw),zvec(ibgw:nbgw))
   do ik = 1, kset%nkpt
@@ -60,7 +61,7 @@ subroutine plot_spectrFunc()
         vxc = dble(vxcnn(ie,ik))
         zvec(ie) = selfex(ie,ik)+selfec(ie,iom,ik)
         scr = dble(zvec(ie))
-        sci = imag(zvec(ie)) + eta
+        sci = imag(zvec(ie))
         tvec(ie) = om-enk-scr+vxc
         sfunc(ie,iom,ik) = 1.d0/pi*abs(sci)/(tvec(ie)**2+sci**2)
       end do

@@ -22,8 +22,8 @@ contains
     implicit none
     integer :: iq, fid
 
-    ! eta = input%gw%selfenergy%swidth
-    eta = 1.d-8
+    eta = input%gw%selfenergy%swidth
+    ! eta = 1.d-8
 
     !=================
     ! Initialization
