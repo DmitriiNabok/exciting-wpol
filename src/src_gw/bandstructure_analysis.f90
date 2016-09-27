@@ -6,9 +6,9 @@ subroutine bandstructure_analysis(title,ib,nb,nkpt,eband,efermi)
 
     implicit none
     character(len=*), intent(in) :: title
-    integer, intent(in) :: ib, nb, nkpt
-    real(8), intent(in) :: eband(ib:nb,nkpt)
-    real(8), intent(in) :: efermi
+    integer, intent(in)    :: ib, nb, nkpt
+    real(8), intent(in)    :: eband(ib:nb,nkpt)
+    real(8), intent(inout) :: efermi
     ! local variables
     real(8) :: ebmax, ebmin, egf, ego
     real(8) :: fermidos
@@ -67,12 +67,13 @@ subroutine bandstructure_analysis(title,ib,nb,nkpt,eband,efermi)
           ! direct gap
           write(fgw,10) ' Direct BandGap (eV):', egf*hev
           write(fgw,11) kset%vkl(:,ikvbm), ikvbm
-          write(fgw,10) ' Optical BandGap (eV):', ego*hev
+          write(fgw,10) ' BandGap at Gamma (eV):', ego*hev
         else
           ! indirect gap
           write(fgw,10) ' Fundamental BandGap (eV):', egf*hev
           write(fgw,12) kset%vkl(:,ikvbm), ikvbm, kset%vkl(:,ikcbm), ikcbm
-          write(fgw,10) ' Optical BandGap (eV):', ego*hev
+          write(fgw,10) ' Direct Bandgap at VBM (eV):', (eband(numin,ikvbm)-eband(nomax,ikvbm))*hev
+          write(fgw,10) ' Direct Bandgap at CBM (eV):', (eband(numin,ikcbm)-eband(nomax,ikcbm))*hev
           !write(fgw,11) kset%vkl(:,ikvcm), ikvcm
         end if
       end if

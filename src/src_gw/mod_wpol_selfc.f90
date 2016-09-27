@@ -23,7 +23,6 @@ contains
     integer :: iq, fid
 
     eta = input%gw%selfenergy%swidth
-    ! eta = 1.d-8
 
     !=================
     ! Initialization
@@ -112,7 +111,6 @@ contains
       ! Calculate W_{ij} in pole representation
       call calc_md_dmmd(iq)
       call diagonalize_dmmd(iq)
-      call calc_wvck(iq)
       ! call calc_wmat()
       ! call print_wmat(iq)
       call delete_coulomb_potential

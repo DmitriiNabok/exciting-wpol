@@ -11,8 +11,6 @@ module mod_wpol
   integer, private :: mbdim
   integer, public  :: nvck
 
-  real(8), parameter, private :: eta=1.d-8
-
   ! index mapping array
   integer,    allocatable :: a2vck(:,:)
   integer,    allocatable :: vck2a(:,:,:)
@@ -99,11 +97,8 @@ contains
       ! step 1: calculate M*D^{1/2} and D^2 + D^{1/2}*M^{+}*v*M*D^{1/2} matrices
       call calc_md_dmmd(iq)
 
-      ! step 2: diagonalize DMMD
+      ! step 2: diagonalize DMMD and calculate w_{vck} Eq. (2.20)
       call diagonalize_dmmd(iq)
-
-      ! step 3: calculate w_{vck} Eq. (2.20)
-      call calc_wvck(iq)
 
       ! step 4: calculate W_{ij} Eq. (2.22)
       call calc_wmat()
@@ -321,22 +316,6 @@ contains
     call zgemm( 'c', 'n', nvck, nvck, mbdim, &
     &           zone, md, mbdim, md, mbdim,  &
     &           zzero, dmmd, nvck)
-    
-    ! D^2 + D^{1/2} M^{+} v M D^{1/2}
-    do i = 1, nvck
-      dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
-    end do
-
-    ! print DMMD matrix
-    ! write(fname,'("dmmd-q",I4.4,".dat")') iq
-    ! open(90,file=trim(fname))
-    ! do i = 1, nvck, 10
-    !   do j = 1, nvck, 10
-    !     write(90,'(2i8,2f16.6)') i, j, dmmd(i,j)
-    !   end do
-    !   write(90,*)
-    ! end do
-    ! close(90)
 
     return
   end subroutine
@@ -347,28 +326,53 @@ contains
     use mod_wpol_pert
     implicit none
     integer, intent(in) :: iq
-    integer :: i
     character(80) :: fname
+    integer :: i, j, nreig, nsteps
+    complex(8), allocatable :: work(:,:)
+    integer, allocatable :: idx(:)
 
     write(*,*)
     write(*,*) 'Info(mod_wpol::diagonalize_dmmd)'
     write(*,*) '    Matrix size: ', nvck
 
-    ! matrix eigenvalues
     allocate(tvck(nvck))
 
+    ! Direct methods
+    ! do i = 1, nvck
+    !   dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
+    ! end do
     ! call mkl_zheev(nvck,dmmd,tvck)
-    call mkl_zheevr(nvck,dmmd,tvck)
+    ! call mkl_zheevr(nvck,dmmd,tvck)
+    ! write(fname,'("lambda-eig-q",I4.4,".dat")') iq
+    ! open(90,file=trim(fname))
+    ! do i = 1, nvck
+    !   write(90,'(i4,f16.6)') i, tvck(i)
+    ! end do
+    ! close(90)
 
+    ! SVD decomposition
+    dmmd(:,:) = 0.d0
+    call mkl_svd(mbdim,nvck,md,dmmd,tvck)
+    do i = 1, nvck
+      tvck(i) = d(i)*d(i) + tvck(i)
+    end do
+    ! write(fname,'("lambda-svd-q",I4.4,".dat")') iq
+    ! open(90,file=trim(fname))
+    ! allocate(idx(nvck))
+    ! call sortidx(nvck,tvck,idx)
+    ! do i = 1, nvck
+    !   write(90,'(i4,f16.6)') i, tvck(idx(i))
+    ! end do
+    ! close(90)
+
+    ! Perturbation theory
     ! call wpol_pert(nvck,d,dmmd,tvck)
 
-    ! print \Lambda matrix
-    ! write(fname,'("lambda-q",I4.4,".OUT")') iq
-    ! open(89,file=trim(fname))
-    ! do i = 1, nvck
-    !   write(89,'(i8,f16.6)') i, tvck(i)
-    ! end do
-    ! close(89)
+    ! w_{vck} (2.20)
+    allocate(wvck(mbdim,nvck))
+    call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+    &           zone, md, mbdim, dmmd, nvck, &
+    &           zzero, wvck, mbdim)
    
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck
@@ -376,28 +380,9 @@ contains
         tvck(i) = sqrt(tvck(i))
       else
         ! set to (numerical) zero
-        tvck(i) = 1.d-8
+        tvck(i) = 0.d0
       end if
     end do
-
-    return
-  end subroutine
-
-!--------------------------------------------------------------------------------
-  subroutine calc_wvck(iq)
-    implicit none
-    integer, intent(in) :: iq
-    integer :: im, i
-    real(8) :: t1
-
-    ! w_{vck} (2.20)
-    allocate(wvck(mbdim,nvck))
-    call zgemm( 'n', 'n', mbdim, nvck, nvck, &
-    &           zone, md, mbdim, dmmd, nvck, &
-    &           zzero, wvck, mbdim)
-
-    ! think of storing w_{vck} to be reused for calculating \Sigma_c
-    ! add here
 
     return
   end subroutine
@@ -406,8 +391,11 @@ contains
   subroutine calc_wmat()
     implicit none
     integer    :: iom, i, im
-    real(8)    :: om
+    real(8)    :: om, eta
     complex(8) :: zt1
+
+    ! plot smearing
+    eta = input%gw%scrcoul%swidth
 
     ! W_{ij}(q,\omega) (2.22) (regular part only)
     allocate(wij(mbsiz,mbsiz,freq%nomeg))

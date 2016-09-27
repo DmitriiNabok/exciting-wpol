@@ -47,9 +47,9 @@ subroutine init_dft_eigenvalues()
     &                   ntet,tnodes,wtet,tvol, &
     &                   efermi,egap,fermidos)
     
-    evalsv(:,:) = evalsv(:,:)-efermi
-    evalcr(:,:) = evalcr(:,:)-efermi
-    efermi = 0.d0
+    ! evalsv(:,:) = evalsv(:,:)-efermi
+    ! evalcr(:,:) = evalcr(:,:)-efermi
+    ! efermi = 0.d0
     
     ! apply scissor shift
     !e0 = 0.0037 ! 0.1 eV
