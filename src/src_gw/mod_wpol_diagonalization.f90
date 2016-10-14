@@ -7,7 +7,6 @@ contains
 
 !--------------------------------------------------------------------------------
   subroutine mkl_svd(m,n,A,zevec,deval)
-    use mod_wpol_tests
     implicit none
     integer,    intent(in)  :: m, n
     complex(8), intent(in)  :: A(m,n)
@@ -198,77 +197,6 @@ contains
       write(*,*) '    info = ', info
       stop
     end if
-    return
-  end subroutine
-
-!--------------------------------------------------------------------------------
-  subroutine lanczos(ndim,h,nreig,nsteps,deval,zevec)
-    use modmain, only: zzero, zone
-    implicit none
-    integer,    intent(in)  :: ndim
-    complex(8), intent(in)  :: h(ndim,ndim)
-    integer,    intent(in)  :: nreig
-    integer,    intent(in)  :: nsteps
-    real(8),    intent(out) :: deval(nsteps)
-    complex(8), intent(out) :: zevec(ndim,nsteps)
-
-    ! local
-    integer :: iter, lflag, info(4), lprnt, lpset(5)
-    real(8) :: hnrm
-    complex(8), allocatable :: basis(:,:)
-    complex(8), allocatable :: q(:), r(:)
-    real(8),    allocatable :: rnrm(:), work(:)
-
-    external hlzdrd
-
-    lprnt  = 64+128         ! LPRNT  is the printing code
-
-    lpset(1) = ndim
-    lpset(2) = nreig      
-    lpset(3) = nsteps
-    lpset(4) = lprnt
-    lpset(5) = ndim
-
-    allocate(rnrm(nsteps))
-    allocate(work((nsteps+10)*nsteps))
-    allocate(q(ndim), r(ndim))
-    allocate(basis(ndim,nsteps))
-
-    lflag = 0
-    hnrm  = 0.0d0
-  
-    do while (.true.)
-
-      call hlzdrd (lflag, lpset, info, hnrm, deval, rnrm, work, q, r, basis, zevec)
-
-      if (lflag < 0) then
-
-        write(*,'(a,4i5)') 'Abnormal exit, execution finished', info(1), info(2), info(3), info(4)
-        if ( info(4) /= 0 ) stop
-
-      else if (lflag == 1) then
-
-        call zgemv ('n', ndim, ndim, zone, h, ndim, q, 1, zzero, r, 1)
-
-      else
-
-        exit ! iter loop
-
-      end if
-
-    end do
-
-    ! if (iter > 1000) then
-    !   write(*,*) 'too many iterations'
-    !   stop
-    ! end if
-
-    call hlzdrd (3, lpset, info, hnrm, deval, rnrm, work, q, r, basis, zevec)
-    write (*,'(a,4i5)') 'Standard exit, execution finished', info(1), info(2), info(3), info(4)
-
-    deallocate(basis)
-    deallocate(q, r, rnrm, work)
-
     return
   end subroutine
 

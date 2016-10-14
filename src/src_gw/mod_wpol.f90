@@ -338,10 +338,10 @@ contains
     allocate(tvck(nvck))
 
     ! Direct methods
-    ! do i = 1, nvck
-    !   dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
-    ! end do
-    ! call mkl_zheev(nvck,dmmd,tvck)
+    do i = 1, nvck
+      dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
+    end do
+    call mkl_zheev(nvck,dmmd,tvck)
     ! call mkl_zheevr(nvck,dmmd,tvck)
     ! write(fname,'("lambda-eig-q",I4.4,".dat")') iq
     ! open(90,file=trim(fname))
@@ -351,11 +351,11 @@ contains
     ! close(90)
 
     ! SVD decomposition
-    dmmd(:,:) = 0.d0
-    call mkl_svd(mbdim,nvck,md,dmmd,tvck)
-    do i = 1, nvck
-      tvck(i) = d(i)*d(i) + tvck(i)
-    end do
+    ! dmmd(:,:) = 0.d0
+    ! call mkl_svd(mbdim,nvck,md,dmmd,tvck)
+    ! do i = 1, nvck
+    !   tvck(i) = d(i)*d(i) + tvck(i)
+    ! end do
     ! write(fname,'("lambda-svd-q",I4.4,".dat")') iq
     ! open(90,file=trim(fname))
     ! allocate(idx(nvck))
