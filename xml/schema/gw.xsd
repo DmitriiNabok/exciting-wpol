@@ -261,6 +261,37 @@
                 </xs:sequence>
               </xs:complexType>
             </xs:element>
+
+            <xs:element ex:importance="expert" ex:unit="" name="eigensolver" maxOccurs="1" minOccurs="0">
+              <xs:annotation>
+                <xs:documentation>
+                    Eigenvalue problem solver parameters.
+                 </xs:documentation>
+              </xs:annotation>
+              <xs:complexType>
+                <xs:attribute ex:importance="expert" type="xs:integer" ex:unit="" name="blkSize" default="4">
+                  <xs:annotation><xs:documentation>
+                  Block size in band-Lanczos approach.
+                  </xs:documentation></xs:annotation>
+                </xs:attribute>
+                <xs:attribute ex:importance="expert" type="xs:integer" ex:unit="" name="niter" default="10">
+                  <xs:annotation><xs:documentation>
+                  Number of iterations in band-Lanczos approach.
+                  </xs:documentation></xs:annotation>
+                </xs:attribute>
+                <xs:attribute ex:importance="expert" type="xs:string" ex:unit="" name="method" default="bandLanczos">
+                  <xs:annotation><xs:documentation>
+                  Eigenvalue problem solver types:
+                  <list>
+                    <li>lapack  - Lapack solver for exact diagonalization</li>
+                    <li>lanczos - Band Lanczos iterative solver</li>
+                    <li>pert    - Matrix perturbation theory</li>
+                  </list>
+                  </xs:documentation></xs:annotation>
+                </xs:attribute>
+
+              </xs:complexType>
+            </xs:element>
             
           </xs:all>
 

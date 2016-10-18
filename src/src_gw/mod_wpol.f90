@@ -9,7 +9,7 @@ module mod_wpol
   
   integer, private :: ndim, mdim
   integer, private :: mbdim
-  integer, public  :: nvck
+  integer, public  :: nvck, nvck0
 
   ! index mapping array
   integer,    allocatable :: a2vck(:,:)
@@ -132,11 +132,11 @@ contains
     end if
     mdim  = nstdf-numin+1
 
-    nvck = kqset%nkpt*ndim*mdim
+    nvck0 = kqset%nkpt*ndim*mdim
 
     ! map a -> {vck}
     if (allocated(a2vck)) deallocate(a2vck)
-    allocate(a2vck(3,nvck))
+    allocate(a2vck(3,nvck0))
 
     ! map {vck} -> a
     if (allocated(vck2a)) deallocate(vck2a)
@@ -205,11 +205,11 @@ contains
     end if
 
     ! global arrays
-    allocate(d(nvck))
+    allocate(d(nvck0))
     d(:) = 0.d0
-    allocate(md(mbdim,nvck))
+    allocate(md(mbdim,nvck0))
     md(:,:) = 0.d0  
-    allocate(dmmd(nvck,nvck))
+    allocate(dmmd(nvck0,nvck0))
     dmmd(:,:) = 0.d0
 
     ! local data
@@ -313,9 +313,40 @@ contains
     ! 2D^{1/2} M^{+} v M 2D^{1/2} = 2D^{1/2} \tilde{M}^{+} \tilde{M} 2D^{1/2}
 
     ! regular term
-    call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+    call zgemm( 'c', 'n', nvck0, nvck0, mbdim, &
     &           zone, md, mbdim, md, mbdim,  &
-    &           zzero, dmmd, nvck)
+    &           zzero, dmmd, nvck0)
+
+if (.false.) then
+
+    write(*,*) mbdim, nvck0
+ 
+    write(fname,'("d-q",I4.4,".dat")') iq
+    open(90,file=trim(fname))
+    do i = 1, nvck0
+      write(90,'(i4,f16.6)') i, d(i)
+    end do
+    close(90)
+
+    write(fname,'("m-q",I4.4,".dat")') iq
+    open(90,file=trim(fname))
+    do j = 1, nvck0
+      do i = 1, mbdim
+        write(90,'(2i4,2f16.6)') i, j, md(i,j)/sqrt(d(j))
+      end do
+    end do
+    close(90)
+
+    write(fname,'("md-q",I4.4,".dat")') iq
+    open(90,file=trim(fname))
+    do j = 1, nvck0
+      do i = 1, mbdim
+        write(90,'(2i4,2f16.6)') i, j, md(i,j)
+      end do
+    end do
+    close(90)
+
+end if
 
     return
   end subroutine
@@ -324,56 +355,123 @@ contains
   subroutine diagonalize_dmmd(iq)
     use mod_wpol_diagonalization
     use mod_wpol_pert
+    use mod_lanczos
     implicit none
     integer, intent(in) :: iq
     character(80) :: fname
-    integer :: i, j, nreig, nsteps
-    complex(8), allocatable :: work(:,:)
-    integer, allocatable :: idx(:)
+    integer :: i, j, n, niter, blks
+    real(8),    allocatable :: eval(:)
+    complex(8), allocatable :: Q0(:,:), evec(:,:)
 
     write(*,*)
     write(*,*) 'Info(mod_wpol::diagonalize_dmmd)'
-    write(*,*) '    Matrix size: ', nvck
+    write(*,*) '    Matrix size: ', nvck0
 
-    allocate(tvck(nvck))
+    if (.not.associated(input%gw%eigensolver)) &
+    & input%gw%eigensolver => getstructeigensolver(emptynode)
 
-    ! Direct methods
-    ! do i = 1, nvck
-    !   dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
-    ! end do
-    ! call mkl_zheev(nvck,dmmd,tvck)
-    ! call mkl_zheevr(nvck,dmmd,tvck)
-    ! write(fname,'("lambda-eig-q",I4.4,".dat")') iq
-    ! open(90,file=trim(fname))
-    ! do i = 1, nvck
-    !   write(90,'(i4,f16.6)') i, tvck(i)
-    ! end do
-    ! close(90)
-
-    ! SVD decomposition
-    dmmd(:,:) = 0.d0
-    call mkl_svd(mbdim,nvck,md,dmmd,tvck)
-    do i = 1, nvck
-      tvck(i) = d(i)*d(i) + tvck(i)
+    ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
+    do i = 1, nvck0
+      dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
     end do
-    ! write(fname,'("lambda-svd-q",I4.4,".dat")') iq
-    ! open(90,file=trim(fname))
-    ! allocate(idx(nvck))
-    ! call sortidx(nvck,tvck,idx)
-    ! do i = 1, nvck
-    !   write(90,'(i4,f16.6)') i, tvck(idx(i))
-    ! end do
-    ! close(90)
+   
+    select case (input%gw%eigensolver%method)
 
-    ! Perturbation theory
-    ! call wpol_pert(nvck,d,dmmd,tvck)
+      case ('svd')
+        write(*,*) '    (test) SVD approximation'
+        ! SVD decomposition (crude approximation)
+        nvck = nvck0
+        allocate(tvck(nvck))
+        call mkl_svd(nvck,md,mbdim,dmmd,tvck)
+        do i = 1, nvck
+          tvck(i) = d(i)*d(i) + tvck(i)
+        end do
+        ! write(fname,'("lambda-svd-q",I4.4,".dat")') iq
+        ! open(90,file=trim(fname))
+        ! allocate(idx(nvck))
+        ! call sortidx(nvck,tvck,idx)
+        ! do i = 1, nvck
+        !   write(90,'(i4,f16.6)') i, tvck(idx(i))
+        ! end do
+        ! close(90)        
+
+      case ('simpleLanczos')
+        ! Simple Lanczos iterative solver
+        write(*,*) '    Simple Lanczos algorithm'
+        nvck = input%gw%eigensolver%niter
+        allocate(tvck(nvck))
+        allocate(evec(nvck0,nvck))
+        call lanczos_simple(nvck0, dmmd, nvck, tvck, evec)
+        ! do i = 1, nvck
+        !   write(1,'(i4,f12.4)') i, tvck(i)
+        ! end do
+        deallocate(dmmd)
+        allocate(dmmd(nvck0,nvck))
+        dmmd(:,:) = evec(:,:)
+        deallocate(evec)
+
+      case ('pert')
+        write(*,*) '    (test) First-order perturbation theory'
+        ! Perturbation theory
+        nvck = nvck0
+        allocate(tvck(nvck))
+        call wpol_pert(nvck,d,dmmd,tvck)
+   
+      case ('lanczos')
+        ! Band Lanczos method 
+        write(*,*) '    Band Lanczos algorithm'
+        niter = input%gw%eigensolver%niter
+        blks  = input%gw%eigensolver%blkSize
+        nvck  = blks*niter
+
+        ! Starting basis estimate
+        allocate(eval(nvck0))
+        allocate(Q0(nvck0,nvck0))
+        call mkl_svd(nvck0,md,mbdim,Q0,eval)
+        deallocate(eval)
+        ! _______________
+        ! or unit vectors
+        ! allocate(Q0(nvck0,blks))
+        ! Q0(:,:) = zzero
+        ! do i = 1, blks
+        !   Q0(i,i) = zone
+        ! end do
+
+        allocate(tvck(nvck))
+        if (allocated(evec)) deallocate(evec)
+        allocate(evec(nvck0,nvck))
+        call lanczos_band(nvck0, dmmd, niter, blks, Q0(:,1:blks), tvck, evec)
+        deallocate(Q0)
+        ! do i = 1, nvck
+        !   write(2,'(i4,f12.4)') i, tvck(i)
+        ! end do
+        deallocate(dmmd)
+        allocate(dmmd(nvck0,nvck))
+        dmmd(:,:) = evec(:,:)
+        deallocate(evec)
+
+      case ('lapack')
+        ! Exact diagonalization
+        write(*,*) '    LAPACK diagonalization'
+        nvck = nvck0
+        if (allocated(tvck)) deallocate(tvck)
+        allocate(tvck(nvck))
+        ! call mkl_zheev(nvck,dmmd,tvck)
+        call mkl_zheevr(nvck,dmmd,tvck)        
+
+      case default
+        write(*,*) "ERROR(mod_wpol::diagonalize_dmmd): Unknown eigensolver!"
+        stop
+
+    end select
 
     ! w_{vck} (2.20)
     allocate(wvck(mbdim,nvck))
-    call zgemm( 'n', 'n', mbdim, nvck, nvck, &
-    &           zone, md, mbdim, dmmd, nvck, &
+    call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
+    &           zone, md, mbdim, dmmd, nvck0, &
     &           zzero, wvck, mbdim)
-   
+    deallocate(d, dmmd)
+
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck
       if (tvck(i) > 1.d-8) then

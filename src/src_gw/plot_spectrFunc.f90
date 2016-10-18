@@ -19,6 +19,8 @@ subroutine plot_spectrFunc()
   input%gw%skipgnd = .true.
   call init_gw
 
+  if (rank == 0) then  
+
   if (allocated(vxcnn)) deallocate(vxcnn)
   allocate(vxcnn(ibgw:nbgw,kset%nkpt))
   vxcnn(:,:) = 0.d0
@@ -93,6 +95,8 @@ subroutine plot_spectrFunc()
     write(fid1,*); write(fid1,*)
   end do
   close(fid1)
+
+  end if ! rank 
 
   return
 

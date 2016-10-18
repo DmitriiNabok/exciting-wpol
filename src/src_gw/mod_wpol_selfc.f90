@@ -118,7 +118,6 @@ contains
 
       ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega)
       call calc_selfc_wpol_q(iq)
-      ! write(*,*) 'selfec_q=', sum(selfec)
 
       ! clean unused data
       deallocate(tvck)

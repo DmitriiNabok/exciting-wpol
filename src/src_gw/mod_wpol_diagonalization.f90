@@ -6,13 +6,159 @@ module mod_wpol_diagonalization
 contains
 
 !--------------------------------------------------------------------------------
-  subroutine mkl_svd(m,n,A,zevec,deval)
-    use mod_wpol_tests
+  ! subroutine eig_rank1_update(n,D,M,m,evec,eval)
+  !   implicit none
+  !   integer,    intent(in)  :: n
+  !   real(8),    intent(in)  :: D(n)
+  !   complex(8), intent(in)  :: M(m,n)
+  !   integer,    intent(in)  :: m
+  !   complex(8), intent(out) :: evec(n,n)
+  !   real(8),    intent(out) :: eval(n)
+  !   ! local
+  !   integer :: i, j, info
+  !   complex(8), allocatable :: V(:,:)
+  !   real(8),    allocatable :: S(:), D_old(:), D_new(:), W(:)
+  !   real(8),    allocatable :: Q(:,:), Z(:,:)
+
+  !   stol = 1.d-2
+
+  !   ! step 1: M^{+}M matrix diagonalization and reduction
+  !   allocate(S(n),D_old(n),D_new(n))
+  !   allocate(V(n,n))
+  !   call mkl_svd(n,M,m,V,S)
+
+  !   allocate(W(n))
+  !   allocate(Q(n,n),Z(n,n))
+
+  !   k = 0
+  !   do i = 1, n
+  !     if (S(i) > stol) k = k+1
+  !   end do
+
+  !   k = 1
+  !   do i = 1, n
+  !     call dlaed9( k, k, k, n, D_new, Q, n, S(i), D_old, W,
+  !     &            Z, n, info )
+  !   end do
+
+
+
+  ! end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine get_unique(n,A,etol,k,res,pos,mlt)
     implicit none
-    integer,    intent(in)  :: m, n
+    integer, intent(in) :: n
+    real(8), intent(in) :: A(n)
+    real(8), intent(in) :: etol
+    integer, intent(out) :: k
+    real(8), intent(out) :: res(n) 
+    integer, intent(out) :: pos(n)
+    integer, intent(out) :: mlt(n)
+    ! local
+    integer :: i, j
+    integer, allocatable :: indx(:)
+
+    ! sort array
+    allocate(indx(n))
+    call sortidx(n,A,indx)
+
+    k = 1
+    res(k) = A(indx(n))
+    pos(k) = indx(n)
+    mlt(:) = 1
+    outer: do i = n-1, 1, -1
+      do j = 1, k
+        if ( abs( res(j) - A(indx(i)) ) < etol ) then
+          ! Found a match so start looking again
+          mlt(j) = mlt(j) + 1
+          cycle outer
+        end if
+      end do
+      ! No match found so add it to the output
+      k = k + 1
+      res(k) = A(indx(i))
+      pos(k) = indx(i)
+    end do outer
+
+    deallocate(indx)
+    return
+  end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine mkl_chol(n,A,eval)
+    use modmain, only : zzero, zone
+    implicit none
+    integer,    intent(in)     :: n
+    complex(8), intent(inout)  :: A(n,n)
+    real(8),    intent(out)    :: eval(n)
+
+    ! local
+    ! RWORK dimension should be at least MAX( 1, 5*MIN(M,N) )
+    integer :: i, iter
+    integer :: info
+    complex(8), allocatable :: R(:,:), J(:,:)
+    external zpotrf
+
+    write(*,*) 'Info(mod_zmatrix_diagonalization::mkl_chol):'
+    write(*,*) '   Diagonalization using Cholesky decomposition'
+    write(*,*)
+
+    allocate(R(n,n))
+    allocate(J(n,n))
+
+    ! 0-step
+    J(:,:) = A(:,:)
+
+    A(:,:) = 0.d0
+    do i = 1, n
+      A(i,i) = 1.d0
+    end do
+
+    do iter = 1, 4
+
+      call zpotrf( 'U', n, J, n, info )
+      if (info /= 0) then
+        write(*,*)'The algorithm computing Cholesky decomposition failed.'
+        stop
+      end if
+      R(:,:) = J(:,:)
+
+      ! update eigenvector
+      call zgemm( 'n', 'n', n, n, n, &
+      &           zone, R, n, &
+      &           A, n, &
+      &           zzero, J, n)
+      A(:,:) = J(:,:)
+
+      ! prepare for next iteration: R*R^{+}
+      call zgemm( 'n', 'c', n, n, n, &
+      &           zone, R, n, &
+      &           R, n, &
+      &           zzero, J, n)
+
+    end do
+
+    ! eigenvalues
+    do i = 1, n
+      eval(i) = dble(J(i,i))
+      write(77,*) i, eval(i)
+    end do
+
+    deallocate(J)
+    deallocate(R)
+
+    return
+  end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine mkl_svd(n,A,m,evec,eval)
+    implicit none
+    integer,    intent(in)  :: n
     complex(8), intent(in)  :: A(m,n)
-    complex(8), intent(out) :: zevec(n,n)
-    real(8),    intent(out) :: deval(n)
+    integer,    intent(in)  :: m
+    complex(8), intent(out) :: evec(n,n)
+    real(8),    intent(out) :: eval(n)
 
     ! local
     ! RWORK dimension should be at least MAX( 1, 5*MIN(M,N) )
@@ -24,10 +170,6 @@ contains
     external zgesvd
     real(8) :: dif_norm, a_norm
 
-    write(*,*) 'Info(mod_zmatrix_diagonalization::mkl_svd):'
-    write(*,*) '   Diagonalization using SVD decomposition'
-    write(*,*)
-    
     allocate(A_(m,n))
     A_(:,:) = A(:,:)
 
@@ -61,12 +203,11 @@ contains
     !
     ! Check
     !
-    allocate(sigma(m,n))
-    sigma(:,:) = 0.d0
-    do i = 1, m
-      sigma(i,i) = cmplx(S(i),0.d0)
-    end do
-
+    ! allocate(sigma(m,n))
+    ! sigma(:,:) = 0.d0
+    ! do i = 1, m
+    !   sigma(i,i) = cmplx(S(i),0.d0)
+    ! end do
     ! A_(1:m,1:n) = matmul ( U(1:m,1:m), matmul ( sigma(1:m,1:n), VT(1:n,1:n) ) )
     ! a_norm = abs ( sqrt ( sum ( A(1:m,1:n)**2 ) ) )
     ! dif_norm = abs ( sqrt ( sum ( ( A(1:m,1:n) - A_(1:m,1:n) )**2 ) ) )
@@ -82,16 +223,15 @@ contains
     !
     ! Eigenvalues: \lambda = S^{+}*S
     !
-    deval(:) = 0.d0
+    eval(:) = 0.d0
     do i = 1, m
-      deval(i) = S(i)*S(i)
+      eval(i) = S(i)*S(i)
     end do
-
     !
     ! Eigenvectors
     !
     do i = 1, n
-      zevec(:,i) = conjg(VT(i,:))
+      evec(:,i) = conjg(VT(i,:))
     end do
 
     deallocate(A_)
@@ -198,77 +338,6 @@ contains
       write(*,*) '    info = ', info
       stop
     end if
-    return
-  end subroutine
-
-!--------------------------------------------------------------------------------
-  subroutine lanczos(ndim,h,nreig,nsteps,deval,zevec)
-    use modmain, only: zzero, zone
-    implicit none
-    integer,    intent(in)  :: ndim
-    complex(8), intent(in)  :: h(ndim,ndim)
-    integer,    intent(in)  :: nreig
-    integer,    intent(in)  :: nsteps
-    real(8),    intent(out) :: deval(nsteps)
-    complex(8), intent(out) :: zevec(ndim,nsteps)
-
-    ! local
-    integer :: iter, lflag, info(4), lprnt, lpset(5)
-    real(8) :: hnrm
-    complex(8), allocatable :: basis(:,:)
-    complex(8), allocatable :: q(:), r(:)
-    real(8),    allocatable :: rnrm(:), work(:)
-
-    external hlzdrd
-
-    lprnt  = 64+128         ! LPRNT  is the printing code
-
-    lpset(1) = ndim
-    lpset(2) = nreig      
-    lpset(3) = nsteps
-    lpset(4) = lprnt
-    lpset(5) = ndim
-
-    allocate(rnrm(nsteps))
-    allocate(work((nsteps+10)*nsteps))
-    allocate(q(ndim), r(ndim))
-    allocate(basis(ndim,nsteps))
-
-    lflag = 0
-    hnrm  = 0.0d0
-  
-    do while (.true.)
-
-      call hlzdrd (lflag, lpset, info, hnrm, deval, rnrm, work, q, r, basis, zevec)
-
-      if (lflag < 0) then
-
-        write(*,'(a,4i5)') 'Abnormal exit, execution finished', info(1), info(2), info(3), info(4)
-        if ( info(4) /= 0 ) stop
-
-      else if (lflag == 1) then
-
-        call zgemv ('n', ndim, ndim, zone, h, ndim, q, 1, zzero, r, 1)
-
-      else
-
-        exit ! iter loop
-
-      end if
-
-    end do
-
-    ! if (iter > 1000) then
-    !   write(*,*) 'too many iterations'
-    !   stop
-    ! end if
-
-    call hlzdrd (3, lpset, info, hnrm, deval, rnrm, work, q, r, basis, zevec)
-    write (*,'(a,4i5)') 'Standard exit, execution finished', info(1), info(2), info(3), info(4)
-
-    deallocate(basis)
-    deallocate(q, r, rnrm, work)
-
     return
   end subroutine
 

@@ -198,7 +198,10 @@ subroutine gw_main()
             call task_selfx()
 
         case('sfunc_wpol')
-            if (rank==0) call plot_spectrFunc()
+            call plot_spectrFunc()
+
+        case('test')
+            if (rank==0) call test()
 
     end select
     
