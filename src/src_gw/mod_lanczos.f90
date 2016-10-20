@@ -79,18 +79,16 @@ contains
   end subroutine
 
 !------------------------------------------------------------------------------
-  subroutine lanczos_band(n,H,niter,blks,Q0,eval,evec)
+  subroutine lanczos_band(n,H,niter,blks,Q0,eval)
     use modmain, only : zone, zzero
     implicit none
-    ! input
-    integer,    intent(in) :: n
-    complex(8), intent(in) :: H(n,n)
-    integer,    intent(in) :: niter
-    integer,    intent(in) :: blks
-    complex(8), intent(in) :: Q0(n,blks)
-    ! output
-    real(8),    intent(out) :: eval(blks*niter)
-    complex(8), intent(out) :: evec(n,blks*niter)
+    ! input / output
+    integer,    intent(in)    :: n
+    complex(8), intent(inout) :: H(n,n)
+    integer,    intent(in)    :: niter
+    integer,    intent(in)    :: blks
+    complex(8), intent(in)    :: Q0(n,blks)
+    real(8),    intent(out)   :: eval(blks*niter)
     ! parameters
     real(8), parameter :: eps = 1.d-8
     ! local
@@ -179,9 +177,11 @@ contains
 
     ! Eigenvector of the original matrix
     ! evec H evec^{+} = (Q*T) eval*I (Q*T)^{+}
+    !
+    ! return it back to the input array
     call zgemm( 'n', 'n', n, m, m, &
     &           zone, Q, n, evec1, m,  &
-    &           zzero, evec, n)
+    &           zzero, H(:,1:m), n)
     deallocate(Q)
     deallocate(evec1)
 
@@ -254,27 +254,28 @@ contains
     m = blks*niter
 
     allocate(eval(m))
-    allocate(evec(N,m))
+    ! allocate(evec(N,m))
     allocate(Q0(N,blks))
     Q0(:,:) = zzero
     do i = 1, blks
       Q0(i,i) = zone
     end do
-    call lanczos_band(N,A,niter,blks,Q0,eval,evec)
+    ! call lanczos_band(N,A,niter,blks,Q0,eval,evec)
+    call lanczos_band(N, A, niter, blks, Q0, eval)
     do i = 1, N
       write(*,*) i, eval(i), eval_ref(i)
     end do
     write(*,*) '(lanczos_band): diff(eval)=', &
     &           DNRM2(4, eval-eval_ref, 1)
     write(*,*) '(lanczos_band): diff(evec)=', &
-    &           ZLANGE( 'F', N, N, evec-evec_ref, N, work )
+    &           ZLANGE( 'F', N, N, A-evec_ref, N, work )
     do i = 1, N
       write(*,*) i
       write(*,'(4f12.6)') dble(evec(i,:))
       write(*,'(4f12.6)') dble(evec_ref(i,:))
     end do
     deallocate(eval)
-    deallocate(evec)
+    ! deallocate(evec)
 
     return
   end subroutine
@@ -374,6 +375,63 @@ contains
       stop
     end if
 
+  end subroutine
+
+  subroutine orthogonalize(m,n,A,blks,Q)
+    implicit none
+    integer,    intent(in)  :: m
+    integer,    intent(in)  :: n
+    complex(8), intent(in)  :: A(m,n)
+    integer,    intent(in)  :: blks
+    complex(8), intent(out) :: Q(n,blks)
+    ! local
+    integer :: i
+    integer :: lmn, lwork, lrwork, info
+    real(8),    allocatable :: S(:), rwork(:)
+    complex(8), allocatable :: A_(:,:), U(:,:), VT(:,:), work(:)
+    external zgesvd
+
+    allocate(A_(m,n))
+    A_(:,:) = A(:,:)
+
+    lmn = min(m,n)
+    allocate(S(lmn))
+    allocate(U(m,m),VT(n,n))
+    lrwork = 5*lmn
+    allocate(rwork(lrwork))
+    !
+    ! Query the optimal workspace
+    !
+    lwork = -1
+    allocate(work(1))
+    call zgesvd( 'all', 'all', m, n, A_, m, S, U, m, VT, n, &
+    &             work, lwork, rwork, info )
+    lwork  = int(work(1))
+    deallocate(work)
+    !
+    ! Compute SVD
+    !
+    allocate(work(lwork))
+    call zgesvd( 'all', 'all', m, n, A_, m, S, U, m, VT, n, &
+    &             work, lwork, rwork, info )
+    !
+    ! check for convergence.
+    !
+    if( info > 0 ) then
+      write(*,*)'The algorithm computing svd failed to converge.'
+      stop
+    end if
+
+    do i = 1, blks
+      Q(:,i) = conjg(VT(i,:))
+    end do
+
+    deallocate(A_)
+    deallocate(S)
+    deallocate(U,VT)
+    deallocate(rwork,work)
+
+    return
   end subroutine  
 
 end

@@ -279,7 +279,7 @@
                   Number of iterations in band-Lanczos approach.
                   </xs:documentation></xs:annotation>
                 </xs:attribute>
-                <xs:attribute ex:importance="expert" type="xs:string" ex:unit="" name="method" default="bandLanczos">
+                <xs:attribute ex:importance="expert" type="xs:string" ex:unit="" name="method" default="lanczos">
                   <xs:annotation><xs:documentation>
                   Eigenvalue problem solver types:
                   <list>
@@ -287,6 +287,11 @@
                     <li>lanczos - Band Lanczos iterative solver</li>
                     <li>pert    - Matrix perturbation theory</li>
                   </list>
+                  </xs:documentation></xs:annotation>
+                </xs:attribute>
+                <xs:attribute ex:importance="expert" type="xs:string" ex:unit="" name="basis" default="unit">
+                  <xs:annotation><xs:documentation>
+                  Lanczos starting basis generator.
                   </xs:documentation></xs:annotation>
                 </xs:attribute>
 

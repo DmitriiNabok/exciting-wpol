@@ -8,7 +8,7 @@ module mod_wpol
   implicit none
   
   integer, private :: ndim, mdim
-  integer, private :: mbdim
+  integer, public  :: mbdim
   integer, public  :: nvck, nvck0
 
   ! index mapping array
@@ -353,7 +353,6 @@ end if
 
 !--------------------------------------------------------------------------------
   subroutine diagonalize_dmmd(iq)
-    use mod_wpol_diagonalization
     use mod_wpol_pert
     use mod_lanczos
     implicit none
@@ -376,24 +375,6 @@ end if
     end do
    
     select case (input%gw%eigensolver%method)
-
-      case ('svd')
-        write(*,*) '    (test) SVD approximation'
-        ! SVD decomposition (crude approximation)
-        nvck = nvck0
-        allocate(tvck(nvck))
-        call mkl_svd(nvck,md,mbdim,dmmd,tvck)
-        do i = 1, nvck
-          tvck(i) = d(i)*d(i) + tvck(i)
-        end do
-        ! write(fname,'("lambda-svd-q",I4.4,".dat")') iq
-        ! open(90,file=trim(fname))
-        ! allocate(idx(nvck))
-        ! call sortidx(nvck,tvck,idx)
-        ! do i = 1, nvck
-        !   write(90,'(i4,f16.6)') i, tvck(idx(i))
-        ! end do
-        ! close(90)        
 
       case ('simpleLanczos')
         ! Simple Lanczos iterative solver
@@ -425,36 +406,38 @@ end if
         nvck  = blks*niter
 
         ! Starting basis estimate
-        allocate(eval(nvck0))
-        allocate(Q0(nvck0,nvck0))
-        call mkl_svd(nvck0,md,mbdim,Q0,eval)
-        deallocate(eval)
-        ! _______________
-        ! or unit vectors
-        ! allocate(Q0(nvck0,blks))
-        ! Q0(:,:) = zzero
-        ! do i = 1, blks
-        !   Q0(i,i) = zone
-        ! end do
+        select case (input%gw%eigensolver%basis)
+
+          case ('unit')
+            allocate(Q0(nvck0,blks))
+            Q0(:,:) = zzero
+            do i = 1, min(nvck0,blks)
+              Q0(i,i) = zone
+            end do
+
+          case ('rand')
+
+          case ('svd')
+            allocate(Q0(nvck0,blks))
+            call orthogonalize(mbdim,nvck0,md,blks,Q0)
+
+          case default
+            write(*,*) 'ERROR(mod_wpol::diagonalize_dmmd): Unknown basis generator!'
+            stop
+
+        end select
 
         allocate(tvck(nvck))
-        if (allocated(evec)) deallocate(evec)
-        allocate(evec(nvck0,nvck))
-        call lanczos_band(nvck0, dmmd, niter, blks, Q0(:,1:blks), tvck, evec)
+        call lanczos_band(nvck0, dmmd, niter, blks, Q0, tvck)
         deallocate(Q0)
         ! do i = 1, nvck
         !   write(2,'(i4,f12.4)') i, tvck(i)
         ! end do
-        deallocate(dmmd)
-        allocate(dmmd(nvck0,nvck))
-        dmmd(:,:) = evec(:,:)
-        deallocate(evec)
 
       case ('lapack')
         ! Exact diagonalization
         write(*,*) '    LAPACK diagonalization'
         nvck = nvck0
-        if (allocated(tvck)) deallocate(tvck)
         allocate(tvck(nvck))
         ! call mkl_zheev(nvck,dmmd,tvck)
         call mkl_zheevr(nvck,dmmd,tvck)        
@@ -468,9 +451,10 @@ end if
     ! w_{vck} (2.20)
     allocate(wvck(mbdim,nvck))
     call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
-    &           zone, md, mbdim, dmmd, nvck0, &
+    &           zone, md, mbdim, dmmd(:,1:nvck), nvck0, &
     &           zzero, wvck, mbdim)
-    deallocate(d, dmmd)
+    deallocate(d)
+    deallocate(dmmd)
 
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck

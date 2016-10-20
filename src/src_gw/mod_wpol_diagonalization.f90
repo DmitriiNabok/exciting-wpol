@@ -152,11 +152,11 @@ contains
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine mkl_svd(n,A,m,evec,eval)
+  subroutine mkl_svd(m,n,A,evec,eval)
     implicit none
+    integer,    intent(in)  :: m
     integer,    intent(in)  :: n
     complex(8), intent(in)  :: A(m,n)
-    integer,    intent(in)  :: m
     complex(8), intent(out) :: evec(n,n)
     real(8),    intent(out) :: eval(n)
 
