@@ -331,13 +331,71 @@ contains
     zevec(:,:) = z(:,:)
     deallocate(work, rwork, iwork)
     deallocate(z, isuppz)
-    if (info > 0) then
+    if (info /= 0) then
       write(*,*)
       write(*,*) 'Error(mod_zmatrix_diagonalization::mkl_zheevr):'
       write(*,*) '    ZHEEVR algorithm failed to compute eigenvalues'
       write(*,*) '    info = ', info
       stop
     end if
+    return
+  end subroutine
+
+
+  subroutine mkl_QR(m, n, A)
+    implicit none
+    integer,    intent(in)  :: m
+    integer,    intent(in)  :: n
+    complex(8), intent(out) :: A(m,n)
+    ! local
+    integer :: lmn, lwork, info
+    complex(8), allocatable :: tau(:), work(:)
+
+    lmn = min(m,n)
+    allocate(tau(lmn))
+    !
+    ! Query the optimal workspace
+    ! 
+    lwork = -1
+    allocate(work(1))
+    call ZGEQRF( m, n, A, m, tau, work, lwork, info )
+    lwork = work(1)
+    deallocate(work)
+    !
+    ! QR factorization
+    !
+    allocate(work(lwork))
+    call ZGEQRF( m, n, A, m, tau, work, lwork, info )
+    deallocate(work)
+    if (info /= 0) then
+      write(*,*)
+      write(*,*) 'Error(mod_wpol_diagonalization::mkl_QR):'
+      write(*,*) '    ZGEQRF algorithm failed to compute QR factorization'
+      write(*,*) '    info = ', info
+      stop
+    end if
+    !
+    ! Query the optimal workspace.
+    !
+    lwork = -1
+    allocate(work(1))
+    call ZUNGQR( m, n, lmn, A, m, tau, work, lwork, info )
+    lwork = work(1)
+    deallocate(work)
+    !
+    ! Generate Q matrix
+    !
+    allocate(work(lwork))
+    call ZUNGQR( m, n, lmn, A, m, tau, work, lwork, info )
+    deallocate(work)
+    if (info /= 0) then
+      write(*,*)
+      write(*,*) 'Error(mod_wpol_diagonalization::mkl_QR):'
+      write(*,*) '    ZUNGQR algorithm failed to compute QR factorization'
+      write(*,*) '    info = ', info
+      stop
+    end if
+    deallocate(tau)
     return
   end subroutine
 

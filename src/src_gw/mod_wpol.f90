@@ -209,8 +209,6 @@ contains
     d(:) = 0.d0
     allocate(md(mbdim,nvck0))
     md(:,:) = 0.d0  
-    allocate(dmmd(nvck0,nvck0))
-    dmmd(:,:) = 0.d0
 
     ! local data
     allocate(eveckalm(nstsv,apwordmax,lmmaxapw,natmtot))
@@ -310,44 +308,6 @@ contains
       end if
     end if
 
-    ! 2D^{1/2} M^{+} v M 2D^{1/2} = 2D^{1/2} \tilde{M}^{+} \tilde{M} 2D^{1/2}
-
-    ! regular term
-    call zgemm( 'c', 'n', nvck0, nvck0, mbdim, &
-    &           zone, md, mbdim, md, mbdim,  &
-    &           zzero, dmmd, nvck0)
-
-if (.false.) then
-
-    write(*,*) mbdim, nvck0
- 
-    write(fname,'("d-q",I4.4,".dat")') iq
-    open(90,file=trim(fname))
-    do i = 1, nvck0
-      write(90,'(i4,f16.6)') i, d(i)
-    end do
-    close(90)
-
-    write(fname,'("m-q",I4.4,".dat")') iq
-    open(90,file=trim(fname))
-    do j = 1, nvck0
-      do i = 1, mbdim
-        write(90,'(2i4,2f16.6)') i, j, md(i,j)/sqrt(d(j))
-      end do
-    end do
-    close(90)
-
-    write(fname,'("md-q",I4.4,".dat")') iq
-    open(90,file=trim(fname))
-    do j = 1, nvck0
-      do i = 1, mbdim
-        write(90,'(2i4,2f16.6)') i, j, md(i,j)
-      end do
-    end do
-    close(90)
-
-end if
-
     return
   end subroutine
 
@@ -359,8 +319,12 @@ end if
     integer, intent(in) :: iq
     character(80) :: fname
     integer :: i, j, n, niter, blks
+    real(8) :: r
     real(8),    allocatable :: eval(:)
-    complex(8), allocatable :: Q0(:,:), evec(:,:)
+    complex(8), allocatable :: zmat(:,:), evec(:,:)
+
+    complex(8) :: zt1
+    complex(8), external :: zdotc
 
     write(*,*)
     write(*,*) 'Info(mod_wpol::diagonalize_dmmd)'
@@ -368,58 +332,68 @@ end if
 
     if (.not.associated(input%gw%eigensolver)) &
     & input%gw%eigensolver => getstructeigensolver(emptynode)
-
-    ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
-    do i = 1, nvck0
-      dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
-    end do
    
     select case (input%gw%eigensolver%method)
 
-      case ('simpleLanczos')
-        ! Simple Lanczos iterative solver
-        write(*,*) '    Simple Lanczos algorithm'
-        nvck = input%gw%eigensolver%niter
-        allocate(tvck(nvck))
-        allocate(evec(nvck0,nvck))
-        call lanczos_simple(nvck0, dmmd, nvck, tvck, evec)
-        ! do i = 1, nvck
-        !   write(1,'(i4,f12.4)') i, tvck(i)
-        ! end do
-        deallocate(dmmd)
-        allocate(dmmd(nvck0,nvck))
-        dmmd(:,:) = evec(:,:)
-        deallocate(evec)
-
       case ('pert')
-        write(*,*) '    (test) First-order perturbation theory'
+        !----------------------
         ! Perturbation theory
+        !----------------------
+        write(*,*) '    (test) First-order perturbation theory'
         nvck = nvck0
+        allocate(dmmd(nvck,nvck))
+        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+        &           zone, md, mbdim, md, mbdim,  &
+        &           zzero, dmmd, nvck)
+        ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
+        do i = 1, nvck
+          dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
+        end do
         allocate(tvck(nvck))
         call wpol_pert(nvck,d,dmmd,tvck)
-   
+        ! w_{vck} (2.20)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
+        deallocate(d)
+        deallocate(md)
+        deallocate(dmmd)
+         
       case ('lanczos')
+        !----------------------
         ! Band Lanczos method 
+        !----------------------
         write(*,*) '    Band Lanczos algorithm'
         niter = input%gw%eigensolver%niter
         blks  = input%gw%eigensolver%blkSize
         nvck  = blks*niter
 
+        allocate(evec(nvck0,nvck))
+        evec(:,:) = zzero
+
         ! Starting basis estimate
         select case (input%gw%eigensolver%basis)
 
           case ('unit')
-            allocate(Q0(nvck0,blks))
-            Q0(:,:) = zzero
-            do i = 1, min(nvck0,blks)
-              Q0(i,i) = zone
+            do i = 1, min(nvck0, blks)
+              evec(i,i) = zone
             end do
 
           case ('rand')
+            do i = 1, blks
+              evec(:,i) = md(i,:)
+            end do
+            call mkl_qr(nvck0, blks, evec(:,1:blks))
 
           case ('svd')
-            allocate(Q0(nvck0,blks))
-            call orthogonalize(mbdim,nvck0,md,blks,Q0)
+            allocate(zmat(mbdim,nvck0))
+            zmat(:,:) = md(:,:)
+            call orthogonalize(mbdim, nvck0, zmat)
+            do i = 1, blks
+              evec(:,i) = conjg(zmat(i,:))
+            end do
+            deallocate(zmat)
 
           case default
             write(*,*) 'ERROR(mod_wpol::diagonalize_dmmd): Unknown basis generator!'
@@ -428,19 +402,44 @@ end if
         end select
 
         allocate(tvck(nvck))
-        call lanczos_band(nvck0, dmmd, niter, blks, Q0, tvck)
-        deallocate(Q0)
-        ! do i = 1, nvck
-        !   write(2,'(i4,f12.4)') i, tvck(i)
-        ! end do
+        call lanczos_band_d_md(mbdim, nvck0, d, md, niter, blks, evec, tvck)
+        
+        ! w_{vck} (2.20)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
+        &           zone, md, mbdim, evec, nvck0, &
+        &           zzero, wvck, mbdim)
+
+        ! clear memory
+        deallocate(d)
+        deallocate(md)
+        deallocate(evec)
 
       case ('lapack')
-        ! Exact diagonalization
+        !-------------------------
+        ! Direct diagonalization
+        !-------------------------
         write(*,*) '    LAPACK diagonalization'
+        ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         nvck = nvck0
+        allocate(dmmd(nvck,nvck))
+        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+        &           zone, md, mbdim, md, mbdim,  &
+        &           zzero, dmmd, nvck)
+        do i = 1, nvck
+          dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
+        end do
         allocate(tvck(nvck))
         ! call mkl_zheev(nvck,dmmd,tvck)
-        call mkl_zheevr(nvck,dmmd,tvck)        
+        call mkl_zheevr(nvck,dmmd,tvck)
+        ! w_{vck} (2.20)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
+        deallocate(d)
+        deallocate(md)
+        deallocate(dmmd)
 
       case default
         write(*,*) "ERROR(mod_wpol::diagonalize_dmmd): Unknown eigensolver!"
@@ -448,13 +447,7 @@ end if
 
     end select
 
-    ! w_{vck} (2.20)
-    allocate(wvck(mbdim,nvck))
-    call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
-    &           zone, md, mbdim, dmmd(:,1:nvck), nvck0, &
-    &           zzero, wvck, mbdim)
-    deallocate(d)
-    deallocate(dmmd)
+    
 
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck

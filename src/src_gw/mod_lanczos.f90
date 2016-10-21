@@ -323,7 +323,7 @@ contains
     return
   end subroutine
 
-
+!------------------------------------------------------------------------------
   subroutine diagonalize_tridiagonal(N, D, E, W, Z)
     implicit none
     integer,    intent(in)  :: N
@@ -377,26 +377,21 @@ contains
 
   end subroutine
 
-  subroutine orthogonalize(m,n,A,blks,Q)
+!------------------------------------------------------------------------------
+  subroutine orthogonalize(m,n,A)
     implicit none
     integer,    intent(in)  :: m
     integer,    intent(in)  :: n
     complex(8), intent(in)  :: A(m,n)
-    integer,    intent(in)  :: blks
-    complex(8), intent(out) :: Q(n,blks)
     ! local
     integer :: i
     integer :: lmn, lwork, lrwork, info
     real(8),    allocatable :: S(:), rwork(:)
-    complex(8), allocatable :: A_(:,:), U(:,:), VT(:,:), work(:)
+    complex(8), allocatable :: U(:,:), VT(:,:), work(:)
     external zgesvd
-
-    allocate(A_(m,n))
-    A_(:,:) = A(:,:)
 
     lmn = min(m,n)
     allocate(S(lmn))
-    allocate(U(m,m),VT(n,n))
     lrwork = 5*lmn
     allocate(rwork(lrwork))
     !
@@ -404,7 +399,7 @@ contains
     !
     lwork = -1
     allocate(work(1))
-    call zgesvd( 'all', 'all', m, n, A_, m, S, U, m, VT, n, &
+    call zgesvd( 'N', 'O', m, n, A, m, S, U, m, VT, n, &
     &             work, lwork, rwork, info )
     lwork  = int(work(1))
     deallocate(work)
@@ -412,8 +407,9 @@ contains
     ! Compute SVD
     !
     allocate(work(lwork))
-    call zgesvd( 'all', 'all', m, n, A_, m, S, U, m, VT, n, &
+    call zgesvd( 'N', 'O', m, n, A, m, S, U, m, VT, n, &
     &             work, lwork, rwork, info )
+    deallocate(work,rwork)
     !
     ! check for convergence.
     !
@@ -421,17 +417,147 @@ contains
       write(*,*)'The algorithm computing svd failed to converge.'
       stop
     end if
-
-    do i = 1, blks
-      Q(:,i) = conjg(VT(i,:))
-    end do
-
-    deallocate(A_)
     deallocate(S)
-    deallocate(U,VT)
-    deallocate(rwork,work)
 
     return
   end subroutine  
+
+
+!---------------------------------------------------
+! Calculate product r = H*q = D*D*q + M^{+}*M*q
+!---------------------------------------------------
+  subroutine matrix_vector(m, n, D, MD, zq, zr)
+    use modmain, only : zzero, zone    
+    implicit none
+    integer,    intent(in)  :: m
+    integer,    intent(in)  :: n
+    real(8),    intent(in)  :: D(n)
+    complex(8), intent(in)  :: MD(m,n)
+    complex(8), intent(in)  :: zq(n)
+    complex(8), intent(out) :: zr(n)
+    ! local
+    integer :: i
+    complex(8), allocatable :: zv(:)
+
+    ! D*D*q
+    do i = 1, n
+      zr(i) = d(i)*d(i)*zq(i)
+    end do
+    ! M*q
+    allocate(zv(m))
+    call zgemv('n', m, n, zone, MD, m, zq, 1, zzero, zv, 1)
+    ! M^{+}*M*q
+    call zgemv('c', m, n, zone, MD, m, zv, 1, zone,  zr, 1)
+    deallocate(zv)
+
+    return
+  end subroutine
+
+!------------------------------------------------------------------------------
+  subroutine lanczos_band_d_md(m, n, d, md, niter, blks, Q, eval)
+    use modmain, only : zone, zzero
+    implicit none
+    ! input / output
+    integer,    intent(in)    :: m
+    integer,    intent(in)    :: n
+    real(8),    intent(in)    :: d(n)
+    complex(8), intent(in)    :: md(m,n)
+    integer,    intent(in)    :: niter
+    integer,    intent(in)    :: blks
+    complex(8), intent(inout) :: Q(n,blks*niter)
+    real(8),    intent(out)   :: eval(blks*niter)
+    ! parameters
+    real(8), parameter :: eps = 1.d-8
+    ! local
+    integer :: i, j, ld, iab
+    real(8) :: norm
+    complex(8), allocatable :: zr(:)
+    complex(8), allocatable :: T(:,:), AB(:,:), evec(:,:)
+    ! external subroutines
+    real(8),    external :: dznrm2
+    complex(8), external :: zdotc
+    external             :: zgemv
+
+    ! Lanczos basis size
+    ld = blks*niter
+
+    if (ld > N) then
+      write(*,*) 'ERROR(mod_lanczos::lanczos_band): Inconsistent parameters!'
+      write(*,*) '    (block size)*(number of iteration) > (matrix size)'
+      stop
+    end if
+
+    allocate(zr(n))
+    allocate(T(ld,ld))
+    T(:,:) = 0.d0
+
+    ! Block Lanczos iterations
+    do i = 1, ld
+
+      ! r = H*q_i
+      call matrix_vector(m, n, d, md, Q(:,i), zr)
+
+      ! r = r - \sum T_ij*q_j
+      do j = max(1,i-blks), i-1
+        zr(:) = zr(:) - T(j,i)*Q(:,j)
+      end do
+
+      do j = i, min(ld,i+blks-1)
+        ! T_ij = r^{+}*q_j
+        T(i,j) = zdotc(n, zr, 1, Q(:,j), 1)
+        ! r = r - T_{ij}*q_j
+        zr(:) = zr(:) - conjg(T(i,j))*Q(:,j)
+      end do
+
+      if (blks+i > ld) cycle
+
+      !-----------------------------
+      ! Prepare for next iteration
+      !-----------------------------
+
+      ! T_{i,i+n} = norm(r)
+      norm = dznrm2(n, zr, 1)
+      T(i,blks+i) = norm
+
+      ! q_{i+n} = r / T(i,i+n)
+      if (norm > eps) then
+        Q(:,blks+i) = zr / norm
+      else
+        write(*,*) 'WARNING(mod_lanczos::lanczos_band): Zero basis vector! Quit execution...'
+        exit
+        ! one should do something here ...
+        ! reduce block size?
+      end if
+
+    end do ! iteration loop
+    deallocate(zr)
+
+    ! Lapack 'U' banded matrix format
+    allocate(AB(blks+1,ld))
+    AB(:,:) = 0.d0
+    do j = 1, ld
+      do i = max(1,j-blks), j
+        iab = blks+1+i-j
+        AB(iab,j) = T(i,j)
+      end do
+    end do
+
+    ! Solve eigenvalue problem for banded matrix
+    call diagonalize_banded(blks+1,ld,AB,eval,T)
+    deallocate(AB)
+
+    ! Eigenvector of the original matrix
+    ! evec H evec^{+} = (Q*T) eval*I (Q*T)^{+}
+    allocate(evec(n,ld))
+    call zgemm( 'n', 'n', n, ld, ld, &
+    &           zone, Q, n, T, ld,  &
+    &           zzero, evec, n)
+    deallocate(T)
+    
+    Q(:,:) = evec(:,:)
+    deallocate(evec)
+
+    return
+  end subroutine
 
 end
