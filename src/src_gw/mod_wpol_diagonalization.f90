@@ -166,9 +166,8 @@ contains
     integer :: lmn, lwork, lrwork, info
     real(8),    allocatable :: S(:), rwork(:)
     complex(8), allocatable :: U(:,:), VT(:,:), work(:)
-    complex(8), allocatable :: sigma(:,:), A_(:,:)
+    complex(8), allocatable :: A_(:,:)
     external zgesvd
-    real(8) :: dif_norm, a_norm
 
     allocate(A_(m,n))
     A_(:,:) = A(:,:)
@@ -242,7 +241,6 @@ contains
     return
   end subroutine
 
-
 !--------------------------------------------------------------------------------
   subroutine mkl_zheev(ndim,zevec,deval)
     implicit none
@@ -251,7 +249,6 @@ contains
     real(8),    intent(out)   :: deval(ndim)
     ! local
     integer :: info, lwork, lrwork
-    integer,    allocatable :: iwork(:)
     real(8),    allocatable :: rwork(:)
     complex(8), allocatable :: work(:)
     !
@@ -292,7 +289,7 @@ contains
     complex(8), intent(inout) :: zevec(ndim,ndim)
     real(8),    intent(out)   :: deval(ndim)
     ! local
-    integer :: info, lwork, lrwork, liwork, lwmax
+    integer :: info, lwork, lrwork, liwork
     integer :: il, iu, m
     real(8) :: abstol, vl, vu
     integer,    allocatable :: iwork(:), isuppz(:)

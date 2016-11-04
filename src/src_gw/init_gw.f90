@@ -140,7 +140,7 @@ subroutine init_gw()
     &                      input%gw%freqgrid%nomeg,   &
     &                      input%gw%freqgrid%freqmax, &
     &                      input%gw%freqgrid%freqmin)
-    if (rank==0) call print_freqgrid(freq,fgw)
+    ! if (rank==0) call print_freqgrid(freq,fgw)
 #ifdef _HDF5_      
       if (rank==0) then
         call hdf5_write(fgwh5,"/parameters/freqgrid","freqs", &

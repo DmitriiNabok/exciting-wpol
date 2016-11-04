@@ -4,7 +4,7 @@
 !
 !!INTERFACE:
 !
-subroutine calcevalqp
+subroutine calcevalqp()
 !
 !!DESCRIPTION:
 ! 
@@ -72,7 +72,7 @@ subroutine calcevalqp
 
 contains
 
-    subroutine calcevalqp_gw
+    subroutine calcevalqp_gw()
     
     ! A critical parameters used in this subroutine is iopes, 
     ! which control how Fermi energy shift is treated 

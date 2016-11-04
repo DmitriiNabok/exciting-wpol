@@ -171,12 +171,11 @@ contains
 
     integer    :: ispn, ik, jk, ikp, jkp
     integer    :: ic, icg, ia, is, ias
-    integer    :: i, j, n, m
+    integer    :: i, n, m
     integer(8) :: recl
     real(8)    :: de
     real(8)    :: q0eps(3), modq0
     complex(8) :: zt1, wkp
-    character(80) :: fname
     complex(8), allocatable :: evecsv(:,:,:)
 
     mbdim = mbsiz
@@ -315,16 +314,14 @@ contains
   subroutine diagonalize_dmmd(iq)
     use mod_wpol_pert
     use mod_lanczos
+    use mod_rank1_update, only : sevr, generate_update_vectors
     implicit none
     integer, intent(in) :: iq
-    character(80) :: fname
     integer :: i, j, n, niter, blks
-    real(8) :: r
+    real(8) :: rho
     real(8),    allocatable :: eval(:)
-    complex(8), allocatable :: zmat(:,:), evec(:,:)
-
-    complex(8) :: zt1
-    complex(8), external :: zdotc
+    complex(8), allocatable :: zmat(:,:), evec(:,:), z(:)
+    complex(8), external    :: zdotc
 
     write(*,*)
     write(*,*) 'Info(mod_wpol::diagonalize_dmmd)'
@@ -365,7 +362,7 @@ contains
         ! Band Lanczos method 
         !----------------------
         write(*,*) '    Band Lanczos algorithm'
-        niter = input%gw%eigensolver%niter
+        niter = min(input%gw%eigensolver%niter,nvck0)
         blks  = input%gw%eigensolver%blkSize
         nvck  = blks*niter
 
@@ -437,17 +434,76 @@ contains
         call zgemm( 'n', 'n', mbdim, nvck, nvck, &
         &           zone, md, mbdim, dmmd, nvck, &
         &           zzero, wvck, mbdim)
+
+        write(9,*) 'iq=', iq
+        do i = 1, nvck
+          write(9,*) tvck(i), dmmd(i,i)
+        end do
+        write(9,*)
+        ! stop
+        
         deallocate(d)
         deallocate(md)
         deallocate(dmmd)
+
+      case ('rank1')
+        !-------------------------
+        ! Rank-1 update
+        !-------------------------
+        write(*,*) '    Rank-1 update diagonalization'
+
+        ! SVD of M*D^{1/2}
+        n = min(mbdim, nvck0)
+        allocate(eval(n))
+        allocate(evec(mbdim,nvck0))
+        evec(:,:) = md(:,:)
+        call generate_update_vectors(mbdim, nvck0, evec, eval)
+
+        ! Rank-1 update iterations
+        nvck = nvck0
+
+        ! D*D
+        allocate(tvck(nvck))
+        do i = 1, nvck
+          tvck(i) = d(i)*d(i)
+        end do
+        deallocate(d)
+
+        allocate(dmmd(nvck,nvck))
+        dmmd(:,:) = zzero
+        do i = 1, nvck
+          dmmd(i,i) = zone
+        end do
+
+        niter = min(input%gw%eigensolver%niter, n)
+        allocate(z(nvck))
+        do i = 1, niter
+          rho = eval(i)*eval(i)
+          call zgemv('c', nvck, nvck, zone, dmmd, nvck, &
+          &           conjg(evec(i,:)), 1, zzero, z, 1)
+          call sevr(nvck, tvck, z, rho, dmmd)
+        end do
+        deallocate(z, evec, eval)
+
+        ! write(8,*) 'iq=', iq
+        ! do i = nvck, 1, -1
+        !   write(8,*) tvck(i), dmmd(i,i)
+        ! end do
+        ! write(8,*)
+        ! stop
+
+        ! w_{vck} (2.20)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
+        deallocate(md, dmmd)
 
       case default
         write(*,*) "ERROR(mod_wpol::diagonalize_dmmd): Unknown eigensolver!"
         stop
 
     end select
-
-    
 
     ! following definition of Eq.(2.20) tau = sqrt(lambda)
     do i = 1, nvck

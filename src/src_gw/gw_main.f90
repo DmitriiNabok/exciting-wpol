@@ -200,6 +200,9 @@ subroutine gw_main()
         case('sfunc_wpol')
             call plot_spectrFunc()
 
+        case('evalqp_wpol')
+            call calc_evalqp_wpol()
+
         case('test')
             if (rank==0) call test()
 
