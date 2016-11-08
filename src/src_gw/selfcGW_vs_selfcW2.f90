@@ -1,9 +1,10 @@
 
-subroutine selfcGW_vs_selfcW2
+subroutine selfcGW_vs_selfcW2()
 
     use modinput
-    use modmain, only : efermi, zzero
+    use modmain,        only : efermi, zzero
     use modgw
+    use mod_selfenergy, only : evalks, selfec, iopac, selfecw2
     use m_getunit
     implicit none
     

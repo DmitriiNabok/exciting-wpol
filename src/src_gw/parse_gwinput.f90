@@ -4,6 +4,7 @@ subroutine parse_gwinput()
     use modinput
     use modmain
     use modgw
+    use mod_selfenergy, only : iopac
     use modmpi
     implicit none
  
@@ -30,7 +31,7 @@ subroutine parse_gwinput()
     input%gw%taskname = trim(input%gw%taskname)
     if (rank==0) then
       write(fgw,*)
-      write(fgw,*) 'GW taskname:', trim(input%gw%taskname)
+      write(fgw,*) 'GW taskname: ', trim(input%gw%taskname)
       write(fgw,*)
     end if
     if (rank==0) call linmsg(fgw,'-','')
@@ -236,8 +237,8 @@ subroutine parse_gwinput()
         case('xal')
             if (rank==0) write(fgw,*) '  xal - Core states are included in exchange but not in correlation'
         case('val')
-            if (rank==0) write(fgw,*) '  val - Core states are excluded in all calculations, but kept in &
-           & the construction of mixed basis'
+            if (rank==0) write(fgw,*) '  val - Core states are excluded in all calculations, but used in&
+           & the construction of mixed product basis'
         case('vab')
             if (rank==0) write(fgw,*) '  vab - Core states are excluded completely'
         case default

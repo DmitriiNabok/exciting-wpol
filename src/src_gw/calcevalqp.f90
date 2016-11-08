@@ -16,11 +16,10 @@ subroutine calcevalqp()
 !
 !!USES:
     use modinput
-    use modmain, only : evalsv, efermi, zzero
-    use modgw,   only : ibgw, nbgw, kset, evalqp, eferqp, &
-    &                   sigc, znorm, selfex, selfec, vxcnn, &
-    &                   nbandsgw, nvelgw, &
-    &                   sigsx, sigch, fgw
+    use modmain,        only : evalsv, efermi, zzero
+    use modgw,          only : ibgw, nbgw, kset, nbandsgw, nvelgw, fgw
+    use mod_selfenergy, only : evalqp, eferqp, sigc, selfex, sigsx, sigch
+    use mod_vxc,        only : vxcnn
        
     implicit none
     integer :: nb, ie, ik
@@ -83,10 +82,9 @@ contains
     !          3 -- iterative G0W0 without energy shift
     !         -1 -- selfconsitent GW0 without energy shift
     
-        use modmain, only : zzero
-        use modgw,   only : freq, evalks, evalqp, eferqp, nvelgw, &
-        &                   nomax, numin, hev, selfex, selfec, &
-        &                   iopac, vxcnn
+        use modgw,          only : freq, nvelgw, nomax, numin, hev
+        use mod_selfenergy, only : evalks, selfec, znorm, iopac
+        use mod_vxc, only : vxcnn
        
         implicit none
         integer(4) :: ie 

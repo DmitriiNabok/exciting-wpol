@@ -6,7 +6,7 @@
 subroutine calc_vxnl()
 ! !USES:    
     use modmain
-    use modgw
+    use mod_selfenergy, only : singc2
     use modfvsystem
     use mod_hybrids
     use modmpi

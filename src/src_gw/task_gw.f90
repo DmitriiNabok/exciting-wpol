@@ -13,8 +13,13 @@ subroutine task_gw()
 !
 !!USES:
     use modinput
-    use modmain,               only : zzero, evalsv, efermi
+    use modmain,        only : zzero, evalsv, efermi
     use modgw
+    use mod_selfenergy, only : singc1, singc2, selfex, selfec, &
+    &                          selfecw2, selfecSR, sigsx, sigch, &
+    &                          evalks, evalqp, eferqp, &
+    &                          init_selfenergy, delete_selfenergy, &
+    &                          write_selfenergy
     use mod_mpi_gw
     use m_getunit
     use mod_hdf5

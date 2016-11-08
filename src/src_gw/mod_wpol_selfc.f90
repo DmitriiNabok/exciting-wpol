@@ -3,6 +3,8 @@ module mod_wpol_selfc
 
   use modinput
   use modgw
+  use mod_selfenergy, only : singc1, singc2, selfec, &
+  &                          write_selfecnn
   use mod_mpi_gw
   use mod_wpol
 
@@ -18,7 +20,6 @@ contains
 !--------------------------------------------------------------------------------
   subroutine task_wpol_selfc()
     use m_getunit
-    use mod_selfenergy, only: write_selfecnn
     implicit none
     integer :: iq, fid
 
@@ -132,7 +133,7 @@ contains
 #endif
 
     ! print to file the results
-    if (myrank==0) call write_selfecnn(kset,freq,ibgw,nbgw,selfec)
+    if (myrank==0) call write_selfecnn()
 
     ! delete index mapping arrays
     call del_wpol_indices()

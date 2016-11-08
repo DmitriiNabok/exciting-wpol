@@ -11,7 +11,8 @@ subroutine readselfc()
 ! This subroutine reads the correlation self-energy from file
 !
 !!USES:
-    use modgw, only : kset, freq, ibgw, nbgw, selfec
+    use modgw,          only : kset, freq, ibgw, nbgw
+    use mod_selfenergy, only : selfec
     use m_getunit
 
 !!LOCAL VARIABLES:

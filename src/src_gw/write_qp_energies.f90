@@ -3,6 +3,8 @@ subroutine write_qp_energies(fname)
 
     use modinput
     use modgw
+    use mod_selfenergy, only : evalks, evalqp, selfex, sigc, znorm, sigsx, sigch
+    use mod_vxc,        only : vxcnn
     use m_getunit
     implicit none 
     character(len=*), intent(in) :: fname
@@ -17,11 +19,12 @@ subroutine write_qp_energies(fname)
     !---------------------------------------------------------------------------
     call getunit(fid)
     open(fid,file=trim(fname),action='WRITE',form='FORMATTED')
-      
+
     do ikp = 1, kset%nkpt
 
       write(fid,1) ikp, kset%vkl(:,ikp), kset%wkpt(ikp)
       write(fid,2)
+
       do ie = ibgw, nbgw
 
         eks = evalks(ie,ikp)
@@ -62,7 +65,7 @@ subroutine write_qp_energies(fname)
     close(fid)
 
     1 format('k-point #',i6,':',4f12.6)
-    2 format(' state    E_KS      E_HF       E_GW       Sx         Sc         Vxc         DE_HF        DE_GW       Znk')    
+    2 format(' state   E_KS       E_HF       E_GW       Sx         Sc         Vxc        DE_HF      DE_GW      Znk')    
     3 format(i4,'  ',f10.5,' ',f10.5,' ',f10.5,' ',f10.5,' ',f10.5,' ',f10.5,' ',f10.5,' ',f10.5,' ',f10.5)
 
     return 

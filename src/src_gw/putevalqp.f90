@@ -1,7 +1,8 @@
 
 subroutine putevalqp()
 
-  use modgw
+  use modgw,          only : kset, ibgw, nbgw, efermi
+  use mod_selfenergy, only : evalks, evalqp, eferqp
   use m_getunit
 
   implicit none

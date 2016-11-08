@@ -4,6 +4,7 @@ subroutine task_band()
   use modinput
   use modmain
   use modgw
+  use mod_selfenergy, only : eferqp
   use modmpi
 
   implicit none

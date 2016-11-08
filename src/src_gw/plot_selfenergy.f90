@@ -4,6 +4,9 @@ subroutine plot_selfenergy()
     use modinput
     use modmain
     use modgw
+    use mod_selfenergy, only : evalks, evalqp, selfex, selfec, iopac, &
+    &                          init_selfenergy, delete_selfenergy
+    use mod_vxc,        only : vxcnn
     use mod_frequency
     use mod_hdf5
     use mod_mpi_gw

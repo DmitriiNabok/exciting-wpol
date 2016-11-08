@@ -1,7 +1,8 @@
 !
 subroutine calcmwm(nstart,nend,mstart,mend)
 !
-    use modgw,      only: freq, mwm, fgw
+    use modgw,          only : freq, fgw
+    use mod_selfenergy, only : mwm
     use mod_mpi_gw
     implicit none
     
@@ -63,9 +64,10 @@ contains
     !-------------------------------------------------------------------------------
     subroutine calcmwm_block(iom,nstart,nend,mstart,mend,xnm)
         use modinput
-        use modmain, only: pi, zone, zzero
-        use modgw,   only: vi, kqset, Gamma, singc1, singc2, mbsiz, &
-        &                  minmmat, epsilon, epsh, epsw1, epsw2
+        use modmain,        only : pi, zone, zzero
+        use modgw,          only : vi, kqset, Gamma, mbsiz, &
+        &                          minmmat, epsilon, epsh, epsw1, epsw2
+        use mod_selfenergy, only : singc1, singc2
         implicit none
         ! input variables
         integer(4), intent(in) :: iom

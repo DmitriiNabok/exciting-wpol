@@ -3,7 +3,8 @@ subroutine getevalqp(nkp2,kvecs2,eqp2)
 
   use modinput
   use modmain
-  use modgw,    only: ibgw, nbgw, nkp1, kvecs1, eks1, eqp1, eferqp
+  use modgw,          only : ibgw, nbgw, nkp1, kvecs1, eks1, eqp1
+  use mod_selfenergy, only : eferqp
 
   implicit none
       

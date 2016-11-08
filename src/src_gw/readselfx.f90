@@ -11,7 +11,8 @@ subroutine readselfx()
 ! This subroutine reads the exchange self-energy from file
 !
 !!USES:
-    use modgw,   only : kset, ibgw, nbgw, selfex
+    use modgw,          only : kset, ibgw, nbgw
+    use mod_selfenergy, only : selfex
     use m_getunit
        
 !!LOCAL VARIABLES:

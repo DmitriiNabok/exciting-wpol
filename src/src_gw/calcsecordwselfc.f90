@@ -1,6 +1,7 @@
 subroutine calcsecordwselfc(ikp,iq,mdim)
 
     use modgw
+    use mod_selfenergy, only : singc1, singc2, mwm, selfecw2 
     use mod_mpi_gw
     implicit none
     

@@ -186,13 +186,11 @@ contains
 !--------------------------------------------------------------------
 ! exchange selfenergy
 !--------------------------------------------------------------------
-    subroutine write_selfexnn(kset,ibgw,nbgw,zmat)
+
+    subroutine write_selfexnn()
+      use modgw, only : kset, ibgw, nbgw
       use m_getunit
-      use mod_kpointset
       implicit none
-      type(k_set), intent(in) :: kset
-      integer,     intent(in) :: ibgw, nbgw
-      complex(8),  intent(in) :: zmat(ibgw:nbgw,kset%nkpt)
       integer :: fid, ik, ie
 
       call getunit(fid)
@@ -201,25 +199,22 @@ contains
       do ik = 1, kset%nkpt
         write(fid,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
         do ie = ibgw, nbgw
-          write(fid,'(i6,f18.6)') ie, dble(zmat(ie,ik))
+          write(fid,'(i6,f18.6)') ie, dble(selfex(ie,ik))
         end do
         write(fid,*); write(fid,*)
       end do
       close(fid)
       ! fortran binary format
       open(fid,file='SELFX.OUT',form='UNFORMATTED',status='UNKNOWN')
-      write(fid) ibgw, nbgw, kset%nkpt, zmat
+      write(fid) ibgw, nbgw, kset%nkpt, selfex(ibgw:nbgw,1:kset%nkpt)
       close(fid)
       return
     end subroutine
 
-    subroutine read_selfexnn(kset,ibgw,nbgw,zmat)
+    subroutine read_selfexnn()
+      use modgw, only : kset, ibgw, nbgw
       use m_getunit
-      use mod_kpointset
       implicit none
-      type(k_set), intent(in)  :: kset
-      integer,     intent(in)  :: ibgw, nbgw
-      complex(8),  intent(out) :: zmat(ibgw:nbgw,kset%nkpt)
       integer :: ib, nb, nk
       integer :: fid
 
@@ -242,7 +237,7 @@ contains
       end if
     
       open(fid,file='SELFX.OUT',form='UNFORMATTED',status='UNKNOWN')
-      read(fid) ib, nb, nk, zmat
+      read(fid) ib, nb, nk, selfex(ibgw:nbgw,1:kset%nkpt)
       close(fid)
 
       return
@@ -251,15 +246,11 @@ contains
 !--------------------------------------------------------------------
 ! correlation selfenergy
 !--------------------------------------------------------------------
-    subroutine write_selfecnn(kset,freq,ibgw,nbgw,zmat)
+
+    subroutine write_selfecnn()
+      use modgw, only : kset, freq, ibgw, nbgw
       use m_getunit
-      use mod_kpointset
-      use mod_frequency
       implicit none
-      type(k_set),     intent(in) :: kset
-      type(frequency), intent(in) :: freq
-      integer,         intent(in) :: ibgw, nbgw
-      complex(8),      intent(in) :: zmat(ibgw:nbgw,freq%nomeg,kset%nkpt)
       integer :: iom, n, ik
       integer :: fid1, fid2
       character(80) :: frmt
@@ -277,8 +268,8 @@ contains
         write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
         write(fid2,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
         do iom = 1, freq%nomeg
-          write(fid1,trim(frmt)) freq%freqs(iom), dble(zmat(:,iom,ik))
-          write(fid2,trim(frmt)) freq%freqs(iom), imag(zmat(:,iom,ik))
+          write(fid1,trim(frmt)) freq%freqs(iom), dble(selfec(:,iom,ik))
+          write(fid2,trim(frmt)) freq%freqs(iom), imag(selfec(:,iom,ik))
         end do
         write(fid1,*); write(fid1,*)
         write(fid2,*); write(fid2,*)
@@ -288,21 +279,16 @@ contains
 
       ! binary format
       open(fid1,file='SELFC.OUT',form='UNFORMATTED',status='UNKNOWN')
-      write(fid1) ibgw, nbgw, freq%nomeg, kset%nkpt, zmat
+      write(fid1) ibgw, nbgw, freq%nomeg, kset%nkpt, selfec(ibgw:nbgw,1:freq%nomeg,1:kset%nkpt)
       close(fid1)
 
       return
     end subroutine
     
-    subroutine read_selfecnn(kset,freq,ibgw,nbgw,zmat)
+    subroutine read_selfecnn()
+      use modgw, only : kset, freq, ibgw, nbgw
       use m_getunit
-      use mod_kpointset
-      use mod_frequency
       implicit none
-      type(k_set),     intent(in)  :: kset
-      type(frequency), intent(in)  :: freq
-      integer,         intent(in)  :: ibgw, nbgw
-      complex(8),      intent(out) :: zmat(ibgw:nbgw,freq%nomeg,kset%nkpt)
       integer :: ib, nb, nk, no
       integer :: fid
 
@@ -312,27 +298,27 @@ contains
       read(fid) ib, nb, no, nk
       close(fid)
 
-      if (nk.ne.kset%nkpt) then
+      if (nk /= kset%nkpt) then
         write(*,*)'ERROR(mod_selfenergy::read_selfecnn)): Wrong number of k-points'
         write(*,*)'    nk=', nk, '    nkpt=', kset%nkpt
         stop
       end if
 
-      if ((ib.ne.ibgw).or.(nb.ne.nbgw)) then
+      if ((ib /= ibgw).or.(nb /= nbgw)) then
         write(*,*)'WARNING(mod_selfenergy::read_selfecnn)): Different number of bands'
         write(*,*)'    ib=',   ib, '    nb=', nb
         write(*,*)'  ibgw=', ibgw, '  nbgw=', nbgw
         stop
       end if
 
-      if (no.ne.freq%nomeg) then
+      if (no /= freq%nomeg) then
         write(*,*)'ERROR(mod_selfenergy::read_selfecnn)): Wrong number of frequencies'
         write(*,*)'    no=', no, '    freq%nomeg=', freq%nomeg
         stop
       end if
     
       open(fid,file='SELFC.OUT',form='UNFORMATTED',status='UNKNOWN')
-      read(fid) ib, nb, no, nk, zmat
+      read(fid) ib, nb, no, nk, selfec(ibgw:nbgw,1:freq%nomeg,1:kset%nkpt)
       close(fid)
      
       return

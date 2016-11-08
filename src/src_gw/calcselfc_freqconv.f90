@@ -5,8 +5,9 @@
 subroutine calcselfc_freqconv(ikp,iq,mdim)
     use modinput
     use modmain, only : pi, zzero, evalsv, idxas, evalcr, efermi
-    use modgw,   only : ibgw, nbgw, nstse, kset, kqset, freq, selfec, mwm, &
+    use modgw,   only : ibgw, nbgw, nstse, kset, kqset, freq, &
     &                   ncg, corind, fdebug
+    use mod_selfenergy, only : selfec, mwm
     ! input variables
     implicit none
     integer(4), intent(in) :: ikp

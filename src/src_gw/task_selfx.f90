@@ -2,8 +2,10 @@
 subroutine task_selfx()
 
   use modinput
-  use modmain,               only : zzero, evalsv, efermi
+  use modmain,        only : zzero, evalsv, efermi
   use modgw
+  use mod_selfenergy, only : selfex, singc1, singc2, &
+  &                          write_selfexnn
   use mod_mpi_gw
   use m_getunit
             
@@ -98,7 +100,7 @@ subroutine task_selfx()
     call mpi_sum_array(0,selfex,nbandsgw,kset%nkpt,mycomm_row)
 #endif
     
-  if (myrank==0) call write_selfexnn(kset,ibgw,nbgw,selfex)
+  if (myrank==0) call write_selfexnn()
   
   ! clear memory  
   deallocate(selfex)

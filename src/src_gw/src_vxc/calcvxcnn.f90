@@ -4,7 +4,7 @@
 !
 !!INTERFACE:
 !
-subroutine calcvxcnn
+subroutine calcvxcnn()
 !
 !!DESCRIPTION:
 !
@@ -16,7 +16,8 @@ subroutine calcvxcnn
     use modmain, only : apwordmax, lmmaxapw, lmmaxvr, natmtot, nlomax, &
     &                   nstfv, nspinor, nstsv, nmatmax, nspecies, zzero, &
     &                   nmat, natoms, vxcmt, vxcir, zone
-    use modgw
+    use modgw,   only : ibgw, nbgw, kset, Gkset, kqset, time_vxc
+    use mod_vxc
     use modmpi
     use m_getunit
     use mod_hdf5
@@ -141,8 +142,8 @@ subroutine calcvxcnn
         &  call hdf5_create_group(fgwh5,"/kpoints",cik)
         call hdf5_write(fgwh5,path,"vxcnn",vxcnn(1,ik),(/nbandsgw/))
       end do
-#else    
-      call write_vxcnn(kset,ibgw,nbgw,vxcnn)
+#else
+      call write_vxcnn()
 #endif
     end if
       

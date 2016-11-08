@@ -4,9 +4,9 @@
 !==================================================================
 subroutine calcselfc_cohsex(ikp,iq,mdim)
     use modinput
-    use modmain, only : zzero, nstsv
-    use modgw,   only : ibgw, nbgw, nomax, selfec, mwm, sigch, sigsx, &
-    &                   fdebug
+    use modmain,        only : zzero, nstsv
+    use modgw,          only : ibgw, nbgw, nomax, fdebug
+    use mod_selfenergy, only : selfec, mwm, sigch, sigsx
     ! input variables
     implicit none
     integer(4), intent(in) :: ikp

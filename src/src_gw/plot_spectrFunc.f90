@@ -10,34 +10,29 @@ subroutine plot_spectrFunc()
   implicit none
   integer :: fid1, fid2, fid3, fid4, n, iom, ik, ie
   character(30) :: frmt
-  real(8),    allocatable :: sfunc(:,:,:)
-  real(8),    allocatable :: tvec(:)
-  complex(8), allocatable :: zvec(:)
-  complex(8) :: sigma
-  real(8)    :: scr, sci, div, enk, vxc, om, ef
+  real(8),    allocatable :: enk(:), sf(:)
+  complex(8), allocatable :: sx(:), sc(:), vxc(:)
+  real(8)    :: scr, sci, om
 
   input%gw%skipgnd = .true.
   call init_gw
 
-  if (rank == 0) then  
+if (rank == 0) then  
 
   if (allocated(vxcnn)) deallocate(vxcnn)
   allocate(vxcnn(ibgw:nbgw,kset%nkpt))
   vxcnn(:,:) = 0.d0
-  call read_vxcnn(kset,ibgw,nbgw,vxcnn)
+  call read_vxcnn()
 
   if (allocated(selfex)) deallocate(selfex)
   allocate(selfex(ibgw:nbgw,nkpt))
   selfex(:,:) = 0.d0
-  call read_selfexnn(kset,ibgw,nbgw,selfex)
+  call read_selfexnn()
   
   if (allocated(selfec)) deallocate(selfec)
   allocate(selfec(ibgw:nbgw,freq%nomeg,kset%nkpt))
   selfec(:,:,:) = 0.d0
-  call read_selfecnn(kset,freq,ibgw,nbgw,selfec)
-
-  allocate(sfunc(ibgw:nbgw,freq%nomeg,kset%nkpt))
-  sfunc(:,:,:) = 0.d0
+  call read_selfecnn()
   
   n = nbgw-ibgw+1
   write(frmt,'("(",i8,"f14.6)")') 1+n
@@ -50,31 +45,32 @@ subroutine plot_spectrFunc()
   call getunit(fid4)
   open(fid4,file='DF.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
 
-  allocate(tvec(ibgw:nbgw),zvec(ibgw:nbgw))
+  allocate(enk(ibgw:nbgw), sf(ibgw:nbgw))
+  allocate(sx(ibgw:nbgw), sc(ibgw:nbgw), vxc(ibgw:nbgw))
+
   do ik = 1, kset%nkpt
     write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
     do iom = 1, freq%nomeg
-      om  = freq%freqs(iom)-efermi
-      do ie = ibgw, nbgw
-        enk = evalsv(ie,ik)-efermi
-        vxc = dble(vxcnn(ie,ik))
-        zvec(ie) = selfex(ie,ik)+selfec(ie,iom,ik)
-        scr = dble(zvec(ie))
-        sci = imag(zvec(ie))
-        tvec(ie) = om-enk-scr+vxc
-        sfunc(ie,iom,ik) = 1.d0/pi*abs(sci)/(tvec(ie)**2+sci**2)
-      end do
-      write(fid1,trim(frmt)) om, sfunc(:,iom,ik)
-      write(fid2,trim(frmt)) om, dble(zvec)
-      write(fid3,trim(frmt)) om, imag(zvec)
-      write(fid4,trim(frmt)) om, tvec
+      om  = freq%freqs(iom)
+      enk = evalsv(:,ik)
+      sx  = selfex(:,ik)
+      sc  = selfec(:,iom,ik)
+      vxc = vxcnn(:,ik)
+      sf  = 1.d0/pi*abs(aimag(sc)) / ( (om-enk-dble(sx+sc)+vxc)**2 + aimag(sc)**2 )
+      ! output
+      write(fid1,trim(frmt)) om, sf
+      write(fid2,trim(frmt)) om, dble(sx+sc)
+      write(fid3,trim(frmt)) om, aimag(sx+sc)
+      write(fid4,trim(frmt)) om, om - ( enk + dble(sx+sc-vxc) )
     end do
     write(fid1,*); write(fid1,*)
     write(fid2,*); write(fid2,*)
     write(fid3,*); write(fid3,*)
     write(fid4,*); write(fid4,*)
   end do
-  deallocate(tvec,zvec)
+
+  deallocate(enk,sf)
+  deallocate(sx,sc,vxc)
 
   close(fid1)
   close(fid2)
@@ -84,19 +80,19 @@ subroutine plot_spectrFunc()
   !--------------------
   ! Gaussian smearing
   !--------------------
-  open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
-  do ik = 1, kset%nkpt
-    do ie = ibgw, nbgw
-      call apply_Gaussian_smearing(freq%nomeg,freq%freqs,sfunc(ie,:,ik))
-    end do
-    do iom = 1, freq%nomeg
-      write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sfunc(:,iom,ik)
-    end do
-    write(fid1,*); write(fid1,*)
-  end do
-  close(fid1)
+  ! open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  ! do ik = 1, kset%nkpt
+  !   do ie = ibgw, nbgw
+  !     call apply_Gaussian_smearing(freq%nomeg,freq%freqs,sfunc(ie,:,ik))
+  !   end do
+  !   do iom = 1, freq%nomeg
+  !     write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sfunc(:,iom,ik)
+  !   end do
+  !   write(fid1,*); write(fid1,*)
+  ! end do
+  ! close(fid1)
 
-  end if ! rank 
+end if ! rank == 0
 
   return
 

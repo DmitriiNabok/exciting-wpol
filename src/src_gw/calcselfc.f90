@@ -11,10 +11,11 @@ subroutine calcselfc(iq)
 !
 !!USES:
     use modinput
-    use modmain,    only : nstsv, apwordmax, lmmaxapw, natmtot, nspnfv, &
-    &                      zzero, nmatmax
+    use modmain,        only : nstsv, apwordmax, lmmaxapw, natmtot, nspnfv, &
+    &                          zzero, nmatmax
     use modgw
-    use mod_mpi_gw, only : myrank, myrank_col
+    use mod_selfenergy, only : mwm
+    use mod_mpi_gw,     only : myrank, myrank_col
     use m_getunit
     
 !!INPUT PARAMETERS:

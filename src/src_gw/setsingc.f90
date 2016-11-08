@@ -1,10 +1,11 @@
 
-subroutine setsingc
+subroutine setsingc()
 
     use modinput
-    use modmain,    only: omega, pi
-    use modgw,      only: fdebug, kqset, singc1, singc2
-    use mod_mpi_gw, only: myrank
+    use modmain,        only : omega, pi
+    use modgw,          only : fdebug, kqset
+    use mod_selfenergy, only : singc1, singc2
+    use mod_mpi_gw,     only : myrank
 
     real(8) :: beta
     real(8) :: f1

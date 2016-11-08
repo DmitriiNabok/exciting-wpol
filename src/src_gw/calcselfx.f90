@@ -11,10 +11,11 @@ subroutine calcselfx(iq)
 !
 !!USES:
     use modinput
-    use modmain,    only : nstfv, apwordmax, lmmaxapw, natmtot, nspnfv, &
-    &                      pi, idxas, zzero, nmatmax, zone, occsv
+    use modmain,        only : nstfv, apwordmax, lmmaxapw, natmtot, nspnfv, &
+    &                          pi, idxas, zzero, nmatmax, zone, occsv
     use modgw
-    use mod_mpi_gw, only : myrank
+    use mod_selfenergy, only : singc2, selfex
+    use mod_mpi_gw,     only : myrank
     use mod_hdf5
       
 !!INPUT PARAMETERS:

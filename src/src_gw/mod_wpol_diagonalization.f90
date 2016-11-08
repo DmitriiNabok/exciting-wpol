@@ -6,46 +6,6 @@ module mod_wpol_diagonalization
 contains
 
 !--------------------------------------------------------------------------------
-  ! subroutine eig_rank1_update(n,D,M,m,evec,eval)
-  !   implicit none
-  !   integer,    intent(in)  :: n
-  !   real(8),    intent(in)  :: D(n)
-  !   complex(8), intent(in)  :: M(m,n)
-  !   integer,    intent(in)  :: m
-  !   complex(8), intent(out) :: evec(n,n)
-  !   real(8),    intent(out) :: eval(n)
-  !   ! local
-  !   integer :: i, j, info
-  !   complex(8), allocatable :: V(:,:)
-  !   real(8),    allocatable :: S(:), D_old(:), D_new(:), W(:)
-  !   real(8),    allocatable :: Q(:,:), Z(:,:)
-
-  !   stol = 1.d-2
-
-  !   ! step 1: M^{+}M matrix diagonalization and reduction
-  !   allocate(S(n),D_old(n),D_new(n))
-  !   allocate(V(n,n))
-  !   call mkl_svd(n,M,m,V,S)
-
-  !   allocate(W(n))
-  !   allocate(Q(n,n),Z(n,n))
-
-  !   k = 0
-  !   do i = 1, n
-  !     if (S(i) > stol) k = k+1
-  !   end do
-
-  !   k = 1
-  !   do i = 1, n
-  !     call dlaed9( k, k, k, n, D_new, Q, n, S(i), D_old, W,
-  !     &            Z, n, info )
-  !   end do
-
-
-
-  ! end subroutine
-
-!--------------------------------------------------------------------------------
   subroutine get_unique(n,A,etol,k,res,pos,mlt)
     implicit none
     integer, intent(in) :: n

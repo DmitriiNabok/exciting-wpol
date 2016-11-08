@@ -3,7 +3,8 @@ subroutine calcselfcSR(iq,iomstart,iomend)
 
     use modmain
     use modgw
-    use mod_mpi_gw, only : myrank
+    use mod_selfenergy, only : mwm, selfecSR
+    use mod_mpi_gw,     only : myrank
     implicit none
     integer, intent(in) :: iq
     integer, intent(in) :: iomstart, iomend
