@@ -12,10 +12,10 @@ subroutine calc_evalqp_wpol()
   use mod_nonlinear_equation
   implicit none
   ! local
-  integer :: ik, ib, n, error
+  integer :: ik, ib, n, error, maxiter
   real(8) :: enk, eqp, znk, egap, df
-  real(8) :: s, ds, w, e
-  complex(8) :: sigma, dsigma
+  real(8) :: s, ds, w, e, eps
+  complex(8) :: sigma, dsigma, dE
 
   input%gw%taskname = 'g0w0'
   input%gw%skipgnd = .true.
@@ -35,58 +35,68 @@ subroutine calc_evalqp_wpol()
     ! Solve QP equation
     !---------------------
 
-    ! ik = 1
-    ! ib = 1
-    ! eks = evalsv(ib, ik)
-    ! call sigma(freq%nomeg, freq%freqs, dble(selfec(ib,:,ik)), eks, s, ds)
+    eps = input%gw%QPEquation%epstol  ! accuracy
+    e   = input%gw%QPEquation%region  ! search interval
+    maxiter = 1000
 
     do ik = 1, kset%nkpt
+
+      call getSelfc(freq%nomeg, freq%freqs, selfec(nomax,:,ik), efermi, dE, dsigma)
+      dE = dE - vxcnn(nomax,ik)
+      write(*,*) 'dE = ', dE
+
       do ib = ibgw, nbgw
     
         enk = evalsv(ib,ik)
 
-        if (.true.) then
-          !---------------------
-          ! iterative solution
-          !---------------------
-          e = 0.5 ! trust region
-          ! call mueller(f1, enk, e, 1.d-6, 1000, eqp, n)
-          call brent(f1, enk-e, enk+e, 1.d-6, 1000, eqp, s, n, error)
-          ! call newton(f2, enk, 1000, 1.d-6, eqp, n, .false.)
-          
-          evalks(ib,ik) = enk
-          evalqp(ib,ik) = eqp
-          
-          call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), eqp, sigma, dsigma)
-          sigc(ib,ik) = sigma
-          znorm(ib,ik)  = 1.0d0/(1.0d0-dble(dsigma))
+        select case (input%gw%QPEquation%method)
 
-        else
+          case('iter')
+            !---------------------
+            ! iterative solution
+            !---------------------
+            ! call mueller(f1, enk, e, eps, maxiter, eqp, n)
+            call brent(f1, enk-e, enk+e, eps, maxiter, eqp, s, n, error)
+            ! call newton(f2, enk, maxiter, eps, eqp, n, .false.)
+            
+            evalks(ib,ik) = enk
+            evalqp(ib,ik) = eqp
+            
+            call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), eqp, sigma, dsigma)
+            sigc(ib,ik) = sigma
+            znorm(ib,ik)  = 1.0d0/(1.0d0-dble(dsigma))
 
-          !---------------------
-          ! linearized version
-          !---------------------
-          call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), enk, sigma, dsigma)
-          sigc(ib,ik) = sigma
+          case('lin')
+            !---------------------
+            ! linearized version
+            !---------------------
+            call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), enk, sigma, dsigma)
+            sigc(ib,ik) = sigma
 
-          ! Set the renormalization factor              
-          znk = 1.0d0/(1.0d0-dble(dsigma))
-          if ((znk > 1.d0) .or. (znk < 0.5d0)) then
-            write(fgw,*) 'WARNING(calcevalqp):'
-            write(fgw,100) ik, ib, enk, znk, sigma, dsigma
-            100 format(' Suspicious Znk',' irk=',i4,' ie=',i4, &
-            &          ' enk=',f8.3,' eV',' Znk=',f6.2," ReSc=",f8.3,  &
-            &          ' ImSc=',f8.3," ReSc'=",f8.3," ImSc'=",f8.3)
-            write(fgw,*)
-            ! znk = 1.d0  ! set a default value
-          endif
-          znorm(ib,ik)  = znk
+            ! Set the renormalization factor              
+            znk = 1.0d0/(1.0d0-dble(dsigma))
+            if ((znk > 1.d0) .or. (znk < 0.5d0)) then
+              write(fgw,*) 'WARNING(calcevalqp):'
+              write(fgw,100) ik, ib, enk, znk, sigma, dsigma
+              100 format(' Suspicious Znk',' irk=',i4,' ie=',i4, &
+              &          ' enk=',f8.3,' eV',' Znk=',f6.2," ReSc=",f8.3,  &
+              &          ' ImSc=',f8.3," ReSc'=",f8.3," ImSc'=",f8.3)
+              write(fgw,*)
+              ! znk = 0.8d0  ! set a default value
+            endif
+            znorm(ib,ik)  = znk
 
-          evalks(ib,ik) = enk
-          evalqp(ib,ik) = enk + &
-          &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) )
+            evalks(ib,ik) = enk
+            ! evalqp(ib,ik) = enk + &
+            ! &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) )
+            evalqp(ib,ik) = enk + dble(dE) + &
+            &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) - dE )
 
-        end if
+          case default
+            write(*,*) "ERROR(calc_evalqp_wpol): Unknown method for solving QP equation!"
+            stop
+
+        end select
 
       end do
       
@@ -97,7 +107,7 @@ subroutine calc_evalqp_wpol()
     &                   nbandsgw, kset%nkpt, evalqp(ibgw:nbgw,:), &
     &                   kset%ntet, kset%tnodes, kset%wtet, kset%tvol, &
     &                   eferqp, egap, df)
-    
+
     call write_qp_energies('EVALQP.DAT')
     call bandstructure_analysis('G0W0', ibgw, nbgw, kset%nkpt, evalqp(ibgw:nbgw,:), eferqp)
 

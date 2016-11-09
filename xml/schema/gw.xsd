@@ -18,6 +18,25 @@
           
             <xs:element ex:importance="essential" ex:unit="" ref="plot1d"/>
 
+            <xs:element ex:importance="expert" ex:unit="" name="QPEquation" maxOccurs="1" minOccurs="0">
+              <xs:annotation>
+                <xs:documentation>
+                    Parameters for solving QP equation.
+                 </xs:documentation>
+              </xs:annotation>
+              <xs:complexType>
+                <xs:attribute ex:importance="expert" type="xs:string" ex:unit="" name="method" default="iter">
+                  <xs:annotation><xs:documentation>
+                   Approach to solve QP equation: "iter" - iterative solution; "lin" - linearized version.
+                  </xs:documentation></xs:annotation>
+                </xs:attribute>
+                <xs:attribute ex:importance="expert" type="fortrandouble" ex:unit="" name="region" default="0.5d0"> 
+                </xs:attribute>
+                <xs:attribute ex:importance="expert" type="fortrandouble" ex:unit="" name="epstol" default="1.0d-6"> 
+                </xs:attribute>
+              </xs:complexType>
+            </xs:element>
+
             <xs:element ex:importance="expert" ex:unit="" name="freqgrid" maxOccurs="1" minOccurs="0">
               <xs:annotation>
                 <xs:documentation>
