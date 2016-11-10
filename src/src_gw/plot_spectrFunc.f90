@@ -33,7 +33,7 @@ if (rank == 0) then
   allocate(selfec(ibgw:nbgw,freq%nomeg,kset%nkpt))
   selfec(:,:,:) = 0.d0
   call read_selfecnn()
-  
+
   n = nbgw-ibgw+1
   write(frmt,'("(",i8,"f14.6)")') 1+n
   call getunit(fid1)
@@ -52,10 +52,10 @@ if (rank == 0) then
     write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
     do iom = 1, freq%nomeg
       om  = freq%freqs(iom)
-      enk = evalsv(:,ik)
-      sx  = selfex(:,ik)
-      sc  = selfec(:,iom,ik)
-      vxc = vxcnn(:,ik)
+      enk = evalsv(ibgw:nbgw,ik)
+      sx  = selfex(ibgw:nbgw,ik)
+      sc  = selfec(ibgw:nbgw,iom,ik)
+      vxc = vxcnn(ibgw:nbgw,ik)
       sf  = 1.d0/pi*abs(aimag(sc)) / ( (om-enk-dble(sx+sc)+vxc)**2 + aimag(sc)**2 )
       ! output
       write(fid1,trim(frmt)) om, sf

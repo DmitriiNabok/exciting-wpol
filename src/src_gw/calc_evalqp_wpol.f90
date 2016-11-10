@@ -16,6 +16,7 @@ subroutine calc_evalqp_wpol()
   real(8) :: enk, eqp, znk, egap, df
   real(8) :: s, ds, w, e, eps
   complex(8) :: sigma, dsigma, dE
+  complex(8), allocatable :: deltaE(:,:)
 
   input%gw%taskname = 'g0w0'
   input%gw%skipgnd = .true.
@@ -39,13 +40,15 @@ subroutine calc_evalqp_wpol()
     e   = input%gw%QPEquation%region  ! search interval
     maxiter = 1000
 
+    allocate(deltaE(ibgw:nbgw,1:kset%nkpt))
+
     do ik = 1, kset%nkpt
 
-      call getSelfc(freq%nomeg, freq%freqs, selfec(nomax,:,ik), efermi, dE, dsigma)
-      dE = dE - vxcnn(nomax,ik)
-      write(*,*) 'dE = ', dE
 
       do ib = ibgw, nbgw
+
+        call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), efermi, dE, dsigma)
+        deltaE(ib,ik) = dE + selfex(ib,ik) - vxcnn(ib,ik)
     
         enk = evalsv(ib,ik)
 
@@ -87,10 +90,8 @@ subroutine calc_evalqp_wpol()
             znorm(ib,ik)  = znk
 
             evalks(ib,ik) = enk
-            ! evalqp(ib,ik) = enk + &
-            ! &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) )
-            evalqp(ib,ik) = enk + dble(dE) + &
-            &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) - dE )
+            evalqp(ib,ik) = enk + &
+            &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) )
 
           case default
             write(*,*) "ERROR(calc_evalqp_wpol): Unknown method for solving QP equation!"
@@ -100,9 +101,18 @@ subroutine calc_evalqp_wpol()
 
       end do
       
-    end do    
+    end do
 
-    ! Calculate Fermi energy
+    ! \delta E - Hedin's correction demanding self-consistency at the Fermi surface
+    call fermi_exciting(input%groundstate%tevecsv, nvelgw, &
+    &                   nbandsgw, kset%nkpt, deltaE, &
+    &                   kset%ntet, kset%tnodes, kset%wtet, kset%tvol, &
+    &                   dE, egap, df)
+    write(*,*) 'dE = ', dE
+    deallocate(deltaE)
+    ! evalqp(ibgw:nbgw,:) = evalsv(ibgw:nbgw,:) + (1d0-znorm(ibgw:nbgw,:))*dE
+
+    ! Calculate QP Fermi energy
     call fermi_exciting(input%groundstate%tevecsv, nvelgw, &
     &                   nbandsgw, kset%nkpt, evalqp(ibgw:nbgw,:), &
     &                   kset%ntet, kset%tnodes, kset%wtet, kset%tvol, &
