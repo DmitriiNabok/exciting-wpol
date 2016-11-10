@@ -6,7 +6,7 @@ subroutine plot_selfenergy()
     use modgw
     use mod_selfenergy, only : evalks, evalqp, selfex, selfec, iopac, &
     &                          init_selfenergy, delete_selfenergy
-    use mod_vxc,        only : vxcnn
+    use mod_vxc,        only : vxcnn, read_vxcnn
     use mod_frequency
     use mod_hdf5
     use mod_mpi_gw
@@ -76,16 +76,7 @@ subroutine plot_selfenergy()
       &                     nstsv,evalsv(1,ik))
       evalks(ibgw:nbgw,ik) = evalsv(ibgw:nbgw,ik)
     end do
-    call getunit(fid)
-    open(fid,file='VXCNN.OUT',form='FORMATTED',status='OLD',action='READ')
-    do ik = 1, kset%nkpt
-      read(fid,*) s1, ik_, s2, kset%vkl(:,ik)
-      do ie = ibgw, nbgw
-        read(fid,*) ie_, vxcnn(ie,ik)
-      end do
-      read(fid,*)
-    end do
-    close(fid)
+    call read_vxcnn()
     if (allocated(evalqp)) deallocate(evalqp)
     allocate(evalqp(nstsv,kset%nkpt))
     call getevalqp(kset%nkpt,kset%vkl,evalqp)
