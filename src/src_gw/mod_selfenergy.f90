@@ -19,7 +19,7 @@ module mod_selfenergy
     complex(8), allocatable :: selfec(:,:,:)
     complex(8), allocatable :: selfecSR(:,:,:)
     complex(8), allocatable :: selfecw2(:,:,:)
-    
+
     ! Correction factors for (q^-1) and (q^-2) singularities
     real(8) :: singc1
     real(8) :: singc2
@@ -323,4 +323,96 @@ contains
      
       return
     end subroutine
+
+!--------------------------------------------------------------------------------
+    subroutine write_evalqp()
+      use modgw,          only : kset, ibgw, nbgw, efermi
+      use m_getunit
+      implicit none
+
+      integer :: recl
+      integer :: ik
+      integer :: fid
+
+      ! old format (gwmod-boron)
+      ! inquire(IoLength=recl) kset%nkpt, ibgw, nbgw, kset%vkl(:,1), &
+      ! &       evalqp(ibgw:nbgw,1), evalks(ibgw:nbgw,1)
+
+      ! new format (carbon)
+      inquire(IoLength=recl) kset%nkpt, ibgw, nbgw, kset%vkl(:,1), &
+      &       evalqp(ibgw:nbgw,1), evalks(ibgw:nbgw,1), &
+      &       efermi, eferqp
+
+      call getunit(fid)
+
+      open(fid, File='EVALQP.OUT', Action='WRITE', Form='UNFORMATTED', &
+      &    Access='DIRECT',status='REPLACE', Recl=recl)
+
+      do ik = 1, kset%nkpt
+
+        ! old format (gwmod-boron)
+        ! write(fid, Rec=ik) kset%nkpt, ibgw, nbgw, &
+        ! &     kset%vkl(:,ik), &
+        ! &     evalqp(ibgw:nbgw,ik), &
+        ! &     evalks(ibgw:nbgw,ik)
+
+        ! new format (carbon)
+        write(fid, Rec=ik) kset%nkpt, ibgw, nbgw, &
+        &     kset%vkl(:,ik), &
+        &     evalqp(ibgw:nbgw,ik), &
+        &     evalks(ibgw:nbgw,ik), &
+        &     eferqp, efermi
+      end do ! ikp
+
+      close(fid)
+
+      return
+    end subroutine
+
+!--------------------------------------------------------------------------------
+    subroutine read_evalqp()
+      use modmain, only : evalsv, efermi
+      use modgw,   only : kset, ibgw, nbgw
+      use m_getunit
+      implicit none
+      integer :: ib, nb, nk, ik, recl
+      real(8) :: v(3), t1
+      integer :: fid
+
+      call getunit(fid)
+
+      inquire(IoLength=recl) nk, ib, nb
+      open(fid, File='EVALQP.OUT', Action='READ', Form='UNFORMATTED', &
+      &    Access='DIRECT', Recl=recl)
+      read(fid, Rec=1) nk, ib, nb
+      close(fid)
+
+      if (nk /= kset%nkpt) then
+        write(*,*)'ERROR(mod_selfenergy::read_evalqp)): Wrong number of k-points'
+        write(*,*)'    nk=', nk, '    nkpt=', kset%nkpt
+        stop
+      end if
+
+      if ((ib /= ibgw).or.(nb /= nbgw)) then
+        write(*,*)'WARNING(mod_selfenergy::read_evalqp)): Different number of bands'
+        write(*,*)'    ib=',   ib, '    nb=', nb
+        write(*,*)'  ibgw=', ibgw, '  nbgw=', nbgw
+        stop
+      end if
+
+      inquire(IoLength=recl) nk, ib, nb, v, &
+      &                      evalqp(ib:nb,1), evalks(ib:nb,1), &
+      &                      eferqp, efermi
+      open(fid, File='EVALQP.OUT', Action='READ', Form='UNFORMATTED', &
+      &    Access='DIRECT', Recl=recl)
+      do ik = 1, nk
+        read(fid, Rec=ik) nk, ib, nb, v, &
+        &                evalqp(ib:nb,ik), evalks(ib:nb,ik), &
+        &                eferqp, efermi
+      end do ! ik
+      close(fid)
+
+      return
+    end subroutine   
+
 end module

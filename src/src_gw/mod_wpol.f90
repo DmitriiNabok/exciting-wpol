@@ -435,11 +435,11 @@ contains
         &           zone, md, mbdim, dmmd, nvck, &
         &           zzero, wvck, mbdim)
 
-        write(9,*) 'iq=', iq
-        do i = 1, nvck
-          write(9,*) tvck(i), dmmd(i,i)
-        end do
-        write(9,*)
+        ! write(9,*) 'iq=', iq
+        ! do i = 1, nvck
+        !   write(9,*) tvck(i), dmmd(i,i)
+        ! end do
+        ! write(9,*)
         ! stop
         
         deallocate(d)

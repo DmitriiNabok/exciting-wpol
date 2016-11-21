@@ -269,9 +269,6 @@ contains
       if (allocated(poles)) deallocate(poles)
       if (allocated(sacpar)) deallocate(sacpar)
 
-      ! *** New: Return absolute values of the QP energies
-      ! evalqp(:,:) = evalqp(:,:)+efermi
-      
       return
     end subroutine
 

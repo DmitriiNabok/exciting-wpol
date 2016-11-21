@@ -8,15 +8,15 @@ subroutine calc_evalqp_wpol()
   use mod_vxc,        only: vxcnn, read_vxcnn
   use mod_selfenergy, only: selfex, selfec, read_selfexnn, read_selfecnn, &
   &                         evalks, evalqp, sigc, znorm, eferqp, &
-  &                         init_selfenergy, delete_selfenergy
+  &                         init_selfenergy, delete_selfenergy, &
+  &                         write_evalqp
   use mod_nonlinear_equation
   implicit none
   ! local
-  integer :: ik, ib, n, error, maxiter
+  integer :: ik, ib, n, error, maxiter, iom, iter
   real(8) :: enk, eqp, znk, egap, df
   real(8) :: s, ds, w, e, eps
   complex(8) :: sigma, dsigma, dE
-  complex(8), allocatable :: deltaE(:,:)
 
   input%gw%taskname = 'g0w0'
   input%gw%skipgnd = .true.
@@ -40,21 +40,20 @@ subroutine calc_evalqp_wpol()
     e   = input%gw%QPEquation%region  ! search interval
     maxiter = 1000
 
-    allocate(deltaE(ibgw:nbgw,1:kset%nkpt))
+    enk = evalsv(nomax,ikvbm)
+    call getSelfc(freq%nomeg, freq%freqs, selfec(nomax,:,ikvbm), enk, sigma, dsigma)
+    dE = dble(selfex(nomax,ikvbm) + sigma - vxcnn(nomax,ikvbm))
+    write(*,*) 'nomax, ikvbm, dE = ', nomax, ikvbm, dE
 
     do ik = 1, kset%nkpt
 
-
       do ib = ibgw, nbgw
 
-        call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), efermi, dE, dsigma)
-        deltaE(ib,ik) = dE + selfex(ib,ik) - vxcnn(ib,ik)
-    
         enk = evalsv(ib,ik)
 
         select case (input%gw%QPEquation%method)
 
-          case('iter')
+          case('iter1')
             !---------------------
             ! iterative solution
             !---------------------
@@ -67,9 +66,29 @@ subroutine calc_evalqp_wpol()
             
             call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), eqp, sigma, dsigma)
             sigc(ib,ik) = sigma
-            znorm(ib,ik)  = 1.0d0/(1.0d0-dble(dsigma))
+            znorm(ib,ik)  = 1.0d0
 
-          case('lin')
+          case('iter2')
+            !---------------------
+            ! iterative solution
+            !---------------------
+            eqp = enk
+            do iter = 1, maxiter
+              call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), eqp, sigma, dsigma)
+              evalqp(ib,ik) = enk + &
+              &               dble( selfex(ib,ik) + sigma - vxcnn(ib,ik) )
+              if (abs(evalqp(ib,ik)-eqp) < 1.d-6) exit
+              eqp = evalqp(ib,ik)
+            end do
+            if (iter == maxiter) then
+              write(*,*) 'WARNING(calc_evalqp_wpol): Problem with convergence!'
+            end if
+
+            evalks(ib,ik) = evalsv(ib,ik)
+            sigc(ib,ik)   = sigma
+            znorm(ib,ik)  = 1.0d0
+
+          case('pert')
             !---------------------
             ! linearized version
             !---------------------
@@ -86,12 +105,15 @@ subroutine calc_evalqp_wpol()
               &          ' ImSc=',f8.3," ReSc'=",f8.3," ImSc'=",f8.3)
               write(fgw,*)
               ! znk = 0.8d0  ! set a default value
-            endif
+            end if
             znorm(ib,ik)  = znk
 
             evalks(ib,ik) = enk
             evalqp(ib,ik) = enk + &
             &               znk * dble( selfex(ib,ik) + sigc(ib,ik) - vxcnn(ib,ik) )
+
+            ! Hedin's correction to pertain self-consistency at Fermi (VBM) energy (test option)
+            evalqp(ib,ik) = evalqp(ib,ik) + (1.d0-znk)*dE
 
           case default
             write(*,*) "ERROR(calc_evalqp_wpol): Unknown method for solving QP equation!"
@@ -102,16 +124,7 @@ subroutine calc_evalqp_wpol()
       end do
       
     end do
-
-    ! \delta E - Hedin's correction demanding self-consistency at the Fermi surface
-    call fermi_exciting(input%groundstate%tevecsv, nvelgw, &
-    &                   nbandsgw, kset%nkpt, deltaE, &
-    &                   kset%ntet, kset%tnodes, kset%wtet, kset%tvol, &
-    &                   dE, egap, df)
-    write(*,*) 'dE = ', dE
-    deallocate(deltaE)
-    ! evalqp(ibgw:nbgw,:) = evalsv(ibgw:nbgw,:) + (1d0-znorm(ibgw:nbgw,:))*dE
-
+    
     ! Calculate QP Fermi energy
     call fermi_exciting(input%groundstate%tevecsv, nvelgw, &
     &                   nbandsgw, kset%nkpt, evalqp(ibgw:nbgw,:), &
@@ -119,13 +132,13 @@ subroutine calc_evalqp_wpol()
     &                   eferqp, egap, df)
 
     call write_qp_energies('EVALQP.DAT')
+    call write_evalqp()
     call bandstructure_analysis('G0W0', ibgw, nbgw, kset%nkpt, evalqp(ibgw:nbgw,:), eferqp)
 
     deallocate(vxcnn)
     call delete_selfenergy()
 
   end if ! rank == 0
-
 
 contains
 
@@ -136,6 +149,16 @@ contains
     complex(8) :: s, ds
     call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), x, s, ds)
     fx  = evalsv(ib,ik) + dble(selfex(ib,ik) - vxcnn(ib,ik) + s) - x
+    return
+  end subroutine
+
+  subroutine g1(x, fx)
+    real(8), intent(in)  :: x
+    real(8), intent(out) :: fx
+    ! local
+    complex(8) :: s, ds
+    call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), x, s, ds)
+    fx  = aimag(selfex(ib,ik)) - x
     return
   end subroutine
 
@@ -199,7 +222,7 @@ else
     !-----------------------
     ! polynomial fitting
     !-----------------------
-    np = 3
+    np = 4
     np2 = np/2
     allocate(ya(np), c(np))
     do i = 1, n

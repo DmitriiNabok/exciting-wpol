@@ -15,6 +15,8 @@ module mod_wpol_selfc
   public  :: task_wpol_selfc
   private :: calc_selfc_wpol_q, calc_minmkq
 
+  real(8), parameter :: eps = 1.d-8
+
 contains
 
 !--------------------------------------------------------------------------------
@@ -88,7 +90,7 @@ contains
     end if
 
     allocate(selfec(ibgw:nbgw,freq%nomeg,kset%nkpt))
-    selfec(:,:,:) = 0.d0
+    selfec(:,:,:) = zzero
 
     ! each process does a subset
     do iq = iqstart, iqend
@@ -97,7 +99,7 @@ contains
       write(*,*) '(mod_selfc_wpol::test_selfc_wpol) q-point cycle, iq = ', iq
     
       Gamma = gammapoint(kqset%vqc(:,iq))
-          
+
       ! Calculate interstitial product basis functions
       matsiz = locmatsiz+Gqset%ngk(1,iq)
       call diagsgi(iq)
@@ -196,10 +198,9 @@ contains
         do iom = 1, freq%nomeg
           zt1 = 0.d0
           ! sum over states
-          zt1 = zt1 + sum_occupied(jkp,iom,mw)
-          zt1 = zt1 + sum_unoccupied(jkp,iom,mw)
+          zt1 = zt1 + sum_valence(jkp,iom,mw)
           zt1 = zt1 + sum_core(jkp,iom,mw)
-          selfec(n,iom,ik) = selfec(n,iom,ik)+wkq*zt1
+          selfec(n,iom,ik) = selfec(n,iom,ik) + wkq*zt1
         end do ! iom
 #ifdef USEOMP
 !$OMP END DO
@@ -284,7 +285,7 @@ contains
   end subroutine
 
 !--------------------------------------------------------------------------------
-  function sum_occupied(jkp,iom,mw) result(zsum)
+  function sum_valence(jkp,iom,mw) result(zsum)
     implicit none
     integer,    intent(in) :: jkp, iom
     complex(8), intent(in) :: mw(mdim,nvck)
@@ -292,6 +293,7 @@ contains
     ! local
     integer    :: m, i
     real(8)    :: enk, om
+    real(8)    :: x, y, t1, t2
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu
@@ -303,48 +305,28 @@ contains
     om = freq%freqs(iom)
 
     ! sum over states
-    do m = 1, nomax
+    do m = 1, nstse
       enk = evalsv(m,jkp)
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
-        zt1 = tvck(i) * ( om - enk + (tvck(i)-zi*eta) )
-        zt1 = 0.5d0 / zt1
-        mwt(i) = zt1*mw(m,i)
-      end do
-      ! sum over vck
-      zsum = zsum + zdotc(nvck,mw(m,:),1,mwt,1)
-    end do ! m
-    deallocate(mwt)
-
-    return
-  end function
-
-!--------------------------------------------------------------------------------
-  function sum_unoccupied(jkp,iom,mw) result(zsum)
-    implicit none
-    integer,    intent(in) :: jkp, iom
-    complex(8), intent(in) :: mw(mdim,nvck)
-    complex(8)             :: zsum
-    ! local
-    integer    :: m, i
-    real(8)    :: enk, om
-    complex(8) :: zt1
-    complex(8), allocatable :: mwt(:)
-    complex(8), external    :: zdotc, zdotu
-
-    zsum = 0.d0
-    allocate(mwt(nvck))
-    mwt(:) = 0.d0
-
-    om = freq%freqs(iom)
-
-    ! sum over states
-    do m = nomax+1, nstse
-      enk = evalsv(m,jkp)
-      ! apply frequency/state dependent prefactor
-      do i = 1, nvck
-        zt1 = tvck(i) * ( om - enk - (tvck(i)-zi*eta) )
-        zt1 = 0.5d0 / zt1
+        !------------------
+        ! complex version
+        !------------------
+        ! zt1 = tvck(i) * ( om - enk + sign(1,nomax-m)*(tvck(i)-zi*eta) )
+        ! zt1 = 0.5d0 / zt1
+        ! mwt(i) = zt1*mw(m,i)
+        !------------------
+        ! real part
+        x = om - enk + sign(1,nomax-m)*tvck(i)
+        if (abs(x) > eps) then
+          t1 = 1.d0 / x
+        else
+          t1 = 0.d0
+        end if
+        ! imaginary part
+        ! t2 = eta / (x*x + eta*eta)
+        t2 = -pi*sign(1,nomax-m) / sqrt(2.0*pi*eta) * exp( -0.5*x**2 / eta )
+        zt1 = 0.5d0/tvck(i) * cmplx(t1, t2, 8)
         mwt(i) = zt1*mw(m,i)
       end do
       ! sum over vck

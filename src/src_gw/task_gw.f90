@@ -19,7 +19,7 @@ subroutine task_gw()
     &                          selfecw2, selfecSR, sigsx, sigch, &
     &                          evalks, evalqp, eferqp, &
     &                          init_selfenergy, delete_selfenergy, &
-    &                          write_selfenergy
+    &                          write_selfenergy, write_evalqp
     use mod_mpi_gw
     use m_getunit
     use mod_hdf5
@@ -380,7 +380,7 @@ subroutine task_gw()
       ! Save QP energies into binary file
       !----------------------------------------
       call timesec(t0)
-      call putevalqp()
+      call write_evalqp()
 #ifdef _HDF5_
       call hdf5_write(fgwh5,"/","efermi",efermi)
       call hdf5_write(fgwh5,"/","eferqp",eferqp)
