@@ -324,8 +324,8 @@ contains
           t1 = 0.d0
         end if
         ! imaginary part
-        ! t2 = eta / (x*x + eta*eta)
-        t2 = -pi*sign(1,nomax-m) / sqrt(2.0*pi*eta) * exp( -0.5*x**2 / eta )
+        t2 = sign(1,nomax-m) * eta / (x*x + eta*eta)
+        ! t2 = pi*sign(1,nomax-m) / sqrt(2.0*pi*eta) * exp( -0.5*x**2 / eta )
         zt1 = 0.5d0/tvck(i) * cmplx(t1, t2, 8)
         mwt(i) = zt1*mw(m,i)
       end do
