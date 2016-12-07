@@ -231,9 +231,9 @@
                 <xs:attribute ex:importance="expert" type="xs:string" ex:unit="" name="sciavtype" default="isotropic">
                   <xs:annotation><xs:documentation>
                   Type of volume averaging: 
-                    isotropic - Simple averaging along a specified direction using 
-                                only diagonal components of the dielectric tensor;
+                    isotropic - Simple averaging along a specified direction using only diagonal components of the dielectric tensor;
                     anisotropic - Anisotropic screening by C. Freysoldt et al., CPC 176, 1-13 (2007).
+                    sphavrg   - Spherical average.
                   </xs:documentation></xs:annotation>
                  </xs:attribute>
                 <xs:attribute ex:importance="expert" type="xs:integer" ex:unit="" name="lmaxdielt" default="2"> 

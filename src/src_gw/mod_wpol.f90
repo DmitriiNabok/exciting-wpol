@@ -353,8 +353,6 @@ contains
         call zgemm( 'n', 'n', mbdim, nvck, nvck, &
         &           zone, md, mbdim, dmmd, nvck, &
         &           zzero, wvck, mbdim)
-        deallocate(d)
-        deallocate(md)
         deallocate(dmmd)
          
       case ('lanczos')
@@ -408,8 +406,6 @@ contains
         &           zzero, wvck, mbdim)
 
         ! clear memory
-        deallocate(d)
-        deallocate(md)
         deallocate(evec)
 
       case ('lapack')
@@ -434,16 +430,6 @@ contains
         call zgemm( 'n', 'n', mbdim, nvck, nvck, &
         &           zone, md, mbdim, dmmd, nvck, &
         &           zzero, wvck, mbdim)
-
-        ! write(9,*) 'iq=', iq
-        ! do i = 1, nvck
-        !   write(9,*) tvck(i), dmmd(i,i)
-        ! end do
-        ! write(9,*)
-        ! stop
-        
-        deallocate(d)
-        deallocate(md)
         deallocate(dmmd)
 
       case ('rank1')
@@ -485,19 +471,12 @@ contains
         end do
         deallocate(z, evec, eval)
 
-        ! write(8,*) 'iq=', iq
-        ! do i = nvck, 1, -1
-        !   write(8,*) tvck(i), dmmd(i,i)
-        ! end do
-        ! write(8,*)
-        ! stop
-
         ! w_{vck} (2.20)
         allocate(wvck(mbdim,nvck))
         call zgemm( 'n', 'n', mbdim, nvck, nvck, &
         &           zone, md, mbdim, dmmd, nvck, &
         &           zzero, wvck, mbdim)
-        deallocate(md, dmmd)
+        deallocate(dmmd)
 
       case default
         write(*,*) "ERROR(mod_wpol::diagonalize_dmmd): Unknown eigensolver!"
@@ -542,7 +521,7 @@ contains
         md(:,i) = zt1*wvck(:,i) ! reuse the array md
       end do
 
-      ! v w_{vck} w_{vck}^*
+      ! v w_{vck}
       do im = 1, mbsiz
         md(im,:) = barcev(im)*md(im,:)
       end do 

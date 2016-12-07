@@ -76,9 +76,7 @@ contains
     !===========================
     ! Momentum matrix elements
     !===========================
-    if (.not.input%gw%rpmat) then
-      call calcpmatgw
-    end if
+    if (.not.input%gw%rpmat) call calcpmatgw
 
     !=========================
     ! Main loop over q-points
@@ -245,6 +243,7 @@ contains
     ! local
     integer    :: m, i
     real(8)    :: enk, om
+    real(8)    :: x, y, t1, t2
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu
@@ -312,21 +311,8 @@ contains
         !------------------
         ! complex version
         !------------------
-        ! zt1 = tvck(i) * ( om - enk + sign(1,nomax-m)*(tvck(i)-zi*eta) )
-        ! zt1 = 0.5d0 / zt1
-        ! mwt(i) = zt1*mw(m,i)
-        !------------------
-        ! real part
-        x = om - enk + sign(1,nomax-m)*tvck(i)
-        if (abs(x) > eps) then
-          t1 = 1.d0 / x
-        else
-          t1 = 0.d0
-        end if
-        ! imaginary part
-        ! t2 = sign(1,nomax-m) * eta / (x*x + eta*eta)
-        t2 = pi*sign(1,nomax-m) / sqrt(2.0*pi*eta) * exp( -0.5*x**2 / eta )
-        zt1 = 0.5d0/tvck(i) * cmplx(t1, t2, 8)
+        zt1 = tvck(i) * ( om - enk + sign(1,nomax-m)*(tvck(i)-zi*eta) )
+        zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
       ! sum over vck
@@ -347,6 +333,7 @@ contains
     integer    :: m, i
     integer    :: icg, is, ia, ias, ic
     real(8)    :: enk, om
+    real(8)    :: x, y, t1, t2
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
     complex(8), external    :: zdotc, zdotu

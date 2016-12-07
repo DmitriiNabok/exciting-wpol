@@ -188,7 +188,6 @@ subroutine gw_main()
 
         ! new
         case('wpol') 
-            ! call task_wpol() <-- old subroutine
             call test_wpol()
 
         case('selfc_wpol')
