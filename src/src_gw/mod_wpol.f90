@@ -284,7 +284,7 @@ contains
         md(1:mbsiz,i) = minmmat(1:mbsiz,n,m)*sqrt(de)*wkp
 
         ! singular term: v^{1/2} M^{0} D^{1/2}
-        if (Gamma) md(mbsiz+1,i) = -sqrt(4.d0*pi/omega)*zt1/sqrt(de)*wkp
+        if (Gamma) md(mbsiz+1,i) = sqrt(4.d0*pi/omega)*zt1/sqrt(de)*wkp
 
       end do
       end do

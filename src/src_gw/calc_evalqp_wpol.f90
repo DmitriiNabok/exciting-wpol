@@ -77,7 +77,7 @@ subroutine calc_evalqp_wpol()
               call getSelfc(freq%nomeg, freq%freqs, selfec(ib,:,ik), eqp, sigma, dsigma)
               evalqp(ib,ik) = enk + &
               &               dble( selfex(ib,ik) + sigma - vxcnn(ib,ik) )
-              if (abs(evalqp(ib,ik)-eqp) < 1.d-6) exit
+              if (abs(evalqp(ib,ik)-eqp) < 1.d-4) exit
               eqp = evalqp(ib,ik)
             end do
             if (iter == maxiter) then
@@ -199,7 +199,7 @@ contains
     xx = max(x0, x(1))
     xx = min(x0, x(n))
 
-if (.true.) then
+if (.false.) then
     !-----------------------
     ! linear interpolation
     !-----------------------

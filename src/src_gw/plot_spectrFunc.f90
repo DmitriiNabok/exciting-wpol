@@ -9,7 +9,7 @@ subroutine plot_spectrFunc()
   use mod_selfenergy, only: selfex, selfec, evalks, evalqp, eferqp, &
   &                         read_selfexnn, read_selfecnn, read_evalqp
   implicit none
-  integer :: fid1, fid2, fid3, fid4, fid5
+  integer :: fid1, fid2, fid3, fid4, fid5, fid6, fid7
   integer :: n, iom, ik, ib
   character(30) :: frmt
   real(8),    allocatable :: enk(:), sf(:), sfunc(:,:,:)
@@ -47,9 +47,13 @@ if (rank == 0) then
   call getunit(fid3)
   open(fid3,file='SE-Im.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
   call getunit(fid4)
-  open(fid4,file='DF.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  open(fid4,file='DF1.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
   call getunit(fid5)
-  open(fid5,file='SF-D.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  open(fid5,file='DF2.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  call getunit(fid6)
+  open(fid6,file='DF.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  call getunit(fid7)
+  open(fid7,file='SF-D.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
 
   allocate(sfunc(ibgw:nbgw,freq%nomeg,kset%nkpt))
   allocate(enk(ibgw:nbgw), sf(ibgw:nbgw))
@@ -83,7 +87,9 @@ if (rank == 0) then
       write(fid1,trim(frmt)) om1, sf
       write(fid2,trim(frmt)) om1, dble(sx+sc)
       write(fid3,trim(frmt)) om1, aimag(sx+sc)
-      write(fid4,trim(frmt)) om1, om-enk-dble(sx+sc-vxc)
+      write(fid4,trim(frmt)) om1, om-enk
+      write(fid5,trim(frmt)) om1, dble(sx+sc-vxc)
+      write(fid6,trim(frmt)) om1, om-enk-dble(sx+sc-vxc)
       sfunc(:,iom,ik) = sf(:)
 
       !-------------------------------------
@@ -98,7 +104,7 @@ if (rank == 0) then
         t1 = t1*t1 + ynk(ib)*ynk(ib)
         sfd(ib) = 1.d0/pi*abs(ynk(ib)) / t1
       end do
-      write(fid5,trim(frmt)) om1, sfd
+      write(fid7,trim(frmt)) om1, sfd
 
     end do
     write(fid1,*); write(fid1,*)
@@ -106,6 +112,9 @@ if (rank == 0) then
     write(fid3,*); write(fid3,*)
     write(fid4,*); write(fid4,*)
     write(fid5,*); write(fid5,*)
+    write(fid6,*); write(fid6,*)
+    write(fid7,*); write(fid7,*)
+    
   end do
 
   deallocate(enk,sf)
@@ -117,6 +126,8 @@ if (rank == 0) then
   close(fid3)
   close(fid4)
   close(fid5)
+  close(fid6)
+  close(fid7)
 
   !--------------------
   ! Gaussian smearing
