@@ -123,6 +123,7 @@ contains
       ! clean unused data
       deallocate(tvck)
       deallocate(wvck)
+      if (Gamma) deallocate(wvck0)
       deallocate(mpwipw)
       deallocate(barc)
 
@@ -244,41 +245,68 @@ contains
     integer    :: m, i
     real(8)    :: enk, om
     real(8)    :: x, y, t1, t2
-    complex(8) :: zt1
-    complex(8), allocatable :: mwt(:)
-    complex(8), external    :: zdotc, zdotu
+    complex(8) :: zt1, zt2, p(3)
+    real(8)    :: q0eps(3), modq0
+    real(8)    :: c1, c2
 
     enk = evalsv(n,jkp)
-    allocate(mwt(nvck))
 
     om = freq%freqs(iom)
 
-    do i = 1, nvck
-      zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
-      zt1 = 0.5d0 / zt1
-      mwt(i) = zt1*wvck(mbsiz+1,i)
-    end do
+    sigma1 = zzero
+    sigma2 = zzero
 
-    ! contribution from the first term: 1/q^2
-    sigma2 = zdotc(nvck,wvck(mbsiz+1,:),1,mwt,1)
+    select case(input%gw%scrcoul%sciavtype)
     
-    !---------------------------------------------------
-    ! contribution from the second term: 1/q
-    zt1 = zdotc(nvck,mw(n,:),1,mwt,1)
-    sigma1 = zt1
-    
-    !---------------------------------------------------
-    ! contribution from the third term: 1/q
-    do i = 1, nvck
-      zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
-      zt1 = 0.5d0 / zt1
-      mwt(i) = zt1*conjg(wvck(mbsiz+1,i))
-    end do
+    case('isotropic')
 
-    zt1 = zdotu(nvck,mw(n,:),1,mwt,1)
-    sigma1 = sigma1 + zt1
+      ! q->0 direction
+      q0eps(:) = input%gw%scrcoul%q0eps(:)
+      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
+      q0eps(:) = q0eps(:)/modq0
 
-    deallocate(mwt)
+      do i = 1, nvck
+        zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
+        zt1 = 0.5d0 / zt1
+        zt2 = wvck0(i,1)*q0eps(1)+ &
+        &     wvck0(i,2)*q0eps(2)+ &
+        &     wvck0(i,3)*q0eps(3)
+        !---------------------------------------------------
+        ! contribution from the first term: 1/q^2
+        sigma2 = sigma2 + zt1 * zt2*conjg(zt2)
+        !---------------------------------------------------
+        ! contribution from the second+third term: 1/q
+        sigma1 = sigma1 + zt1 * ( zt2*conjg(mw(n,i)) + conjg(zt2)*mw(n,i) )
+      end do
+
+    case('sphavrg')
+
+      ! c1 = sqrt(4.d0*pi/3.d0)
+      ! c2 = sqrt(2.d0*pi/3.d0)
+      c1 = sqrt(1.d0/3.d0)
+      c2 = sqrt(1.d0/6.d0)
+      
+      do i = 1, nvck
+        zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
+        zt1 = 0.5d0 / zt1
+        p(1) = c2*(zi*wvck0(i,2)+wvck0(i,1))
+        p(2) = c1*wvck0(i,3)
+        p(3) = c2*(zi*wvck0(i,2)-wvck0(i,1))
+        zt2 = ( p(1)*conjg(p(1))+ &
+        &       p(2)*conjg(p(2))+ &
+        &       p(3)*conjg(p(3)) )
+        !---------------------------------------------------
+        ! contribution from the first term: 1/q^2
+        sigma2 = sigma2 + zt1 * zt2
+        !---------------------------------------------------
+        ! There is no contribution from the second+third term: 1/q
+        sigma1 = zzero
+      end do
+
+    case default
+      write(*,*) "ERROR(mod_wpol_selfc::sum_singular): Unknown averaging type!"
+      stop
+    end select
 
     return
   end subroutine

@@ -218,6 +218,8 @@ subroutine parse_gwinput()
         if (rank==0) write(fgw,*) '  Angular momentum cutoff: ', input%gw%scrcoul%lmaxdielt
         if (rank==0) write(fgw,*) '  Number of points used for the Lebedev-Laikov grid: ', input%gw%scrcoul%nleblaik
         if (rank==0) write(fgw,*) '  Averaging of the body of the dielectric function: ', input%gw%scrcoul%sciavbd
+      case('sphavrg')
+        ! used in Wpol version
       case default
         if (rank==0) write(*,*) 'ERROR(parse_gwinput): Illegal value for input%gw%scrcoul%sciavtype'
         if (rank==0) write(*,*) '  Currently supported options are:'

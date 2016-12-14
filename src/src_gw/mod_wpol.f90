@@ -8,7 +8,6 @@ module mod_wpol
   implicit none
   
   integer, private :: ndim, mdim
-  integer, public  :: mbdim
   integer, public  :: nvck, nvck0
 
   ! index mapping array
@@ -19,10 +18,12 @@ module mod_wpol
   ! data arrays
   real(8),    allocatable :: tvck(:)
   complex(8), allocatable :: wvck(:,:)
-  public :: tvck, wvck
+  complex(8), allocatable :: wvck0(:,:)
+  public :: tvck, wvck, wvck0
 
   real(8),    allocatable :: d(:)
   complex(8), allocatable :: md(:,:)
+  complex(8), allocatable :: pm(:,:)
   complex(8), allocatable :: dmmd(:,:)
   complex(8), allocatable :: wij(:,:,:)
   private :: d, md, dmmd, wij
@@ -174,17 +175,11 @@ contains
     integer    :: i, n, m
     integer(8) :: recl
     real(8)    :: de
-    real(8)    :: q0eps(3), modq0
+    real(8)    :: prefac
     complex(8) :: zt1, wkp
     complex(8), allocatable :: evecsv(:,:,:)
 
-    mbdim = mbsiz
-    if (Gamma) then
-      mbdim = mbsiz+1
-      ! q->0 direction
-      q0eps(:) = input%gw%scrcoul%q0eps(:)
-      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
-      q0eps(:) = q0eps(:)/modq0
+    if (Gamma) then      
       ! val-val
       if (allocated(pmatvv)) deallocate(pmatvv)
       allocate(pmatvv(nomax,numin:nstdf,3))
@@ -201,12 +196,14 @@ contains
         &    Action='READ',Form='UNFORMATTED', &
         &    Access='DIRECT',Status='OLD',Recl=recl)
       end if
+      allocate(pm(nvck0,3))
+      pm(:,:) = 0.d0
     end if
 
     ! global arrays
     allocate(d(nvck0))
     d(:) = 0.d0
-    allocate(md(mbdim,nvck0))
+    allocate(md(mbsiz,nvck0))
     md(:,:) = 0.d0  
 
     ! local data
@@ -218,6 +215,7 @@ contains
     allocate(minmmat(mbsiz,ndim,numin:nstdf))
 
     wkp = 2.d0/sqrt(dble(kqset%nkpt))
+    prefac = sqrt(4.d0*pi/omega)*wkp
 
     ! Loop over k-points
     do ispn = 1, nspinor
@@ -246,19 +244,14 @@ contains
 
       ! read the momentum matrix elements
       if (Gamma) call getpmatkgw(ik)
-        
+
       ! Setup \tilde{M}_{ab}(q) * 2D^{1/2}
       do m = numin, nstdf
       do n = 1, ndim
         i = vck2a(n,m,ik)
         if (n <= nomax) then
           de = evalsv(m,jkp)-evalsv(n,ikp)
-          if (Gamma) then
-            ! p \cdot q
-            zt1 =  pmatvv(n,m,1)*q0eps(1)+ &
-            &      pmatvv(n,m,2)*q0eps(2)+ &
-            &      pmatvv(n,m,3)*q0eps(3)
-          end if
+          if (Gamma) pm(i,:) = prefac * pmatvv(n,m,:) / sqrt(de)
         else
           icg = n-nomax
           is  = corind(icg,1)
@@ -266,25 +259,17 @@ contains
           ic  = corind(icg,3)
           ias = idxas(ia,is)
           de  = evalsv(m,jkp)-evalcr(ic,ias)
-          if (Gamma) then
-            ! p \cdot q
-            zt1 =  pmatcv(icg,m,1)*q0eps(1)+ &
-            &      pmatcv(icg,m,2)*q0eps(2)+ &
-            &      pmatcv(icg,m,3)*q0eps(3)
-          end if
+          if (Gamma) pm(i,:) = prefac * pmatcv(icg,m,:) / sqrt(de)
         end if
         if (abs(de) < 1.d-6) then
-          write(*,*) "(mod_wpol::calc_md_dmmd) Problem with eigenvalues! ", n, m
-          stop
+          write(*,*) "WARNING(mod_wpol::calc_md_dmmd) Near degenerate eigenvalues ", n, m
+          ! stop
         end if
 
+        ! D matrix
         d(i) = de
-
-        ! v^{1/2} M 2D^{1/2}
+        ! v^{1/2} M 2D^{1/2} matrix
         md(1:mbsiz,i) = minmmat(1:mbsiz,n,m)*sqrt(de)*wkp
-
-        ! singular term: v^{1/2} M^{0} D^{1/2}
-        if (Gamma) md(mbsiz+1,i) = sqrt(4.d0*pi/omega)*zt1/sqrt(de)*wkp
 
       end do
       end do
@@ -339,20 +324,21 @@ contains
         write(*,*) '    (test) First-order perturbation theory'
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
-        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
-        &           zone, md, mbdim, md, mbdim,  &
+        call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
+        &           zone, md, mbsiz, md, mbsiz,  &
         &           zzero, dmmd, nvck)
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
+        if (Gamma) call add_q0_contribution()
         allocate(tvck(nvck))
         call wpol_pert(nvck,d,dmmd,tvck)
         ! w_{vck} (2.20)
-        allocate(wvck(mbdim,nvck))
-        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
-        &           zone, md, mbdim, dmmd, nvck, &
-        &           zzero, wvck, mbdim)
+        allocate(wvck(mbsiz,nvck))
+        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
+        &           zone, md, mbsiz, dmmd, nvck, &
+        &           zzero, wvck, mbsiz)
         deallocate(dmmd)
          
       case ('lanczos')
@@ -382,9 +368,9 @@ contains
             call mkl_qr(nvck0, blks, evec(:,1:blks))
 
           case ('svd')
-            allocate(zmat(mbdim,nvck0))
+            allocate(zmat(mbsiz,nvck0))
             zmat(:,:) = md(:,:)
-            call orthogonalize(mbdim, nvck0, zmat)
+            call orthogonalize(mbsiz, nvck0, zmat)
             do i = 1, blks
               evec(:,i) = conjg(zmat(i,:))
             end do
@@ -397,14 +383,14 @@ contains
         end select
 
         allocate(tvck(nvck))
-        call lanczos_band_d_md(mbdim, nvck0, d, md, niter, blks, evec, tvck)
+        call lanczos_band_d_md(mbsiz, nvck0, d, md, niter, blks, evec, tvck)
         
         ! w_{vck} (2.20)
-        allocate(wvck(mbdim,nvck))
-        call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
-        &           zone, md, mbdim, evec, nvck0, &
-        &           zzero, wvck, mbdim)
-
+        allocate(wvck(mbsiz,nvck))
+        call zgemm( 'n', 'n', mbsiz, nvck, nvck0, &
+        &           zone, md, mbsiz, evec, nvck0, &
+        &           zzero, wvck, mbsiz)
+        
         ! clear memory
         deallocate(evec)
 
@@ -416,20 +402,33 @@ contains
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
-        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
-        &           zone, md, mbdim, md, mbdim,  &
+        call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
+        &           zone, md, mbsiz, md, mbsiz,  &
         &           zzero, dmmd, nvck)
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
+
+        if (Gamma) call add_q0_contribution()
+
         allocate(tvck(nvck))
         ! call mkl_zheev(nvck,dmmd,tvck)
         call mkl_zheevr(nvck,dmmd,tvck)
+
         ! w_{vck} (2.20)
-        allocate(wvck(mbdim,nvck))
-        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
-        &           zone, md, mbdim, dmmd, nvck, &
-        &           zzero, wvck, mbdim)
+        allocate(wvck(mbsiz,nvck))
+        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
+        &           zone, md, mbsiz, dmmd, nvck, &
+        &           zzero, wvck, mbsiz)
+
+        if (Gamma) then
+          ! Eq. (2.38) i=0, n/=n' term
+          allocate(wvck0(nvck,3))
+          call zgemm( 't', 'n', nvck, 3, nvck, &
+          &           -zone, dmmd, nvck, pm, nvck, &
+          &           zzero, wvck0, nvck)
+        end if
+
         deallocate(dmmd)
 
       case ('rank1')
@@ -439,11 +438,11 @@ contains
         write(*,*) '    Rank-1 update diagonalization'
 
         ! SVD of M*D^{1/2}
-        n = min(mbdim, nvck0)
+        n = min(mbsiz, nvck0)
         allocate(eval(n))
-        allocate(evec(mbdim,nvck0))
+        allocate(evec(mbsiz,nvck0))
         evec(:,:) = md(:,:)
-        call generate_update_vectors(mbdim, nvck0, evec, eval)
+        call generate_update_vectors(mbsiz, nvck0, evec, eval)
 
         ! Rank-1 update iterations
         nvck = nvck0
@@ -472,10 +471,11 @@ contains
         deallocate(z, evec, eval)
 
         ! w_{vck} (2.20)
-        allocate(wvck(mbdim,nvck))
-        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
-        &           zone, md, mbdim, dmmd, nvck, &
-        &           zzero, wvck, mbdim)
+        allocate(wvck(mbsiz,nvck))
+        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
+        &           zone, md, mbsiz, dmmd, nvck, &
+        &           zzero, wvck, mbsiz)
+        
         deallocate(dmmd)
 
       case default
@@ -493,6 +493,73 @@ contains
         tvck(i) = 0.d0
       end if
     end do
+
+    return
+  end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine add_q0_contribution()
+    use modinput
+    use modmain, only : pi, omega, zone, zi
+    implicit none
+    integer :: i, j
+    real(8) :: f1, f2, c1, c2
+    complex(8) :: p1(3), p2(3)
+    complex(8), allocatable :: zv(:)
+    real(8)    :: q0eps(3), modq0
+
+    select case(input%gw%scrcoul%sciavtype)
+    
+    case('isotropic')
+
+      ! q->0 direction
+      q0eps(:) = input%gw%scrcoul%q0eps(:)
+      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
+      q0eps(:) = q0eps(:)/modq0
+
+      allocate(zv(nvck))
+      do i = 1, nvck
+        zv(i) = pm(i,1)*q0eps(1)+ &
+        &       pm(i,2)*q0eps(2)+ &
+        &       pm(i,3)*q0eps(3)
+      end do
+
+      do i = 1, nvck
+        do j = i, nvck
+          dmmd(j,i) = dmmd(j,i) + conjg(zv(j))*zv(i)
+          dmmd(i,j) = conjg(dmmd(j,i))
+        end do
+      end do
+
+      deallocate(zv)
+
+    case('sphavrg')
+
+      ! c1 = sqrt(4.d0*pi/3.d0)
+      ! c2 = sqrt(2.d0*pi/3.d0)
+      c1 = 1.d0
+      c2 = sqrt(0.5d0)
+
+      do i = 1, nvck
+        p1(1) = c2*(zi*pm(i,2)+pm(i,1))
+        p1(2) = c1*pm(i,3)
+        p1(3) = c2*(zi*pm(i,2)-pm(i,1))
+        do j = i, nvck
+          p2(1) = c2*(zi*pm(j,2)+pm(j,1))
+          p2(2) = c1*pm(j,3)
+          p2(3) = c2*(zi*pm(j,2)-pm(j,1))
+          dmmd(j,i) = dmmd(j,i) + &
+          &           ( conjg(p2(1))*p1(1) + &
+          &             conjg(p2(2))*p1(2) + &
+          &             conjg(p2(3))*p1(3) )
+          dmmd(i,j) = conjg(dmmd(j,i))
+        end do
+      end do
+
+    case default
+      write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
+      stop
+    end select
 
     return
   end subroutine
@@ -547,6 +614,7 @@ contains
     if (allocated(md))   deallocate(md)
     if (allocated(dmmd)) deallocate(dmmd)
     if (allocated(wij))  deallocate(wij)
+    if (allocated(pm))   deallocate(pm)
   end subroutine
 
 !--------------------------------------------------------------------------------
