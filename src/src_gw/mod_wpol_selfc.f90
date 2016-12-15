@@ -281,11 +281,8 @@ contains
 
     case('sphavrg')
 
-      ! c1 = sqrt(4.d0*pi/3.d0)
-      ! c2 = sqrt(2.d0*pi/3.d0)
       c1 = sqrt(1.d0/3.d0)
       c2 = sqrt(1.d0/6.d0)
-      
       do i = 1, nvck
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
