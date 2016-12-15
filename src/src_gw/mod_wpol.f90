@@ -383,13 +383,21 @@ contains
         end select
 
         allocate(tvck(nvck))
-        call lanczos_band_d_md(mbsiz, nvck0, d, md, niter, blks, evec, tvck)
+        call lanczos_band_matvec(matrix_vector, nvck0, niter, blks, evec, tvck)
         
         ! w_{vck} (2.20)
         allocate(wvck(mbsiz,nvck))
         call zgemm( 'n', 'n', mbsiz, nvck, nvck0, &
         &           zone, md, mbsiz, evec, nvck0, &
         &           zzero, wvck, mbsiz)
+
+        if (Gamma) then
+          ! Eq. (2.38) i=0, n/=n' term
+          allocate(wvck0(nvck,3))
+          call zgemm( 't', 'n', nvck, 3, nvck0, &
+          &           -zone, evec, nvck0, pm, nvck0, &
+          &           zzero, wvck0, nvck)
+        end if
         
         ! clear memory
         deallocate(evec)
@@ -399,6 +407,7 @@ contains
         ! Direct diagonalization
         !-------------------------
         write(*,*) '    LAPACK diagonalization'
+
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
@@ -493,6 +502,86 @@ contains
         tvck(i) = 0.d0
       end if
     end do
+
+    return
+  end subroutine
+
+!--------------------------------------------------------------------
+! Calculate product r = H*q = D*D*q + M^{+}*M*q + P^{+}*P*q (if q=0)
+!--------------------------------------------------------------------
+  subroutine matrix_vector(n, zq, zr)
+    use modmain, only : zzero, zone    
+    implicit none
+    integer,    intent(in)  :: n
+    complex(8), intent(in)  :: zq(n)
+    complex(8), intent(out) :: zr(n)
+    ! local
+    integer :: i, j
+    complex(8), allocatable :: zv(:), zp(:)
+    real(8)    :: q0eps(3), modq0, c1, c2
+    complex(8) :: p1(3), p2(3)
+    complex(8), external    :: zdotu
+
+    ! D*D*q
+    do i = 1, n
+      zr(i) = d(i)*d(i)*zq(i)
+    end do
+
+    ! M*q
+    allocate(zv(mbsiz))
+    call zgemv('n', mbsiz, n, zone, md, mbsiz, zq, 1, zzero, zv, 1)
+    ! M^{+}*M*q
+    call zgemv('c', mbsiz, n, zone, md, mbsiz, zv, 1, zone,  zr, 1)
+    deallocate(zv)
+
+    ! P^{+}*P*q
+    if (Gamma) then
+
+      select case(input%gw%scrcoul%sciavtype)
+
+      case('isotropic')
+        ! q->0 direction
+        q0eps(:) = input%gw%scrcoul%q0eps(:)
+        modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
+        q0eps(:) = q0eps(:)/modq0
+        allocate(zv(n))
+        do i = 1, n
+          zv(i) = pm(i,1)*q0eps(1)+ &
+          &       pm(i,2)*q0eps(2)+ &
+          &       pm(i,3)*q0eps(3)
+        end do
+        ! u^{+}*u*q
+        do i = 1, n
+          zr(i) = zr(i) + conjg(zv(i))*zdotu(n, zv, 1, zq, 1)
+        end do
+        deallocate(zv)
+
+      case('sphavrg')
+        c1 = 1.d0
+        c2 = sqrt(0.5d0)
+        allocate(zv(n))
+        do i = 1, n
+          p1(1) = c2*(zi*pm(i,2)+pm(i,1))
+          p1(2) = c1*pm(i,3)
+          p1(3) = c2*(zi*pm(i,2)-pm(i,1))
+          do j = 1, n
+            p2(1) = c2*(zi*pm(j,2)+pm(j,1))
+            p2(2) = c1*pm(j,3)
+            p2(3) = c2*(zi*pm(j,2)-pm(j,1))
+            zv(j) = conjg(p1(1))*p2(1) + &
+            &       conjg(p1(2))*p2(2) + &
+            &       conjg(p1(3))*p2(3)
+          end do
+          zr(i) = zr(i) + zdotu(n, zv, 1, zq, 1)
+        end do
+        deallocate(zv)
+
+      case default
+        write(*,*) "ERROR(mod_wpol::matrix_vector): Unknown averaging type!"
+        stop
+      end select
+
+    end if    
 
     return
   end subroutine

@@ -423,45 +423,19 @@ contains
   end subroutine  
 
 
-!---------------------------------------------------
-! Calculate product r = H*q = D*D*q + M^{+}*M*q
-!---------------------------------------------------
-  subroutine matrix_vector(m, n, D, MD, zq, zr)
-    use modmain, only : zzero, zone    
-    implicit none
-    integer,    intent(in)  :: m
-    integer,    intent(in)  :: n
-    real(8),    intent(in)  :: D(n)
-    complex(8), intent(in)  :: MD(m,n)
-    complex(8), intent(in)  :: zq(n)
-    complex(8), intent(out) :: zr(n)
-    ! local
-    integer :: i
-    complex(8), allocatable :: zv(:)
-
-    ! D*D*q
-    do i = 1, n
-      zr(i) = d(i)*d(i)*zq(i)
-    end do
-    ! M*q
-    allocate(zv(m))
-    call zgemv('n', m, n, zone, MD, m, zq, 1, zzero, zv, 1)
-    ! M^{+}*M*q
-    call zgemv('c', m, n, zone, MD, m, zv, 1, zone,  zr, 1)
-    deallocate(zv)
-
-    return
-  end subroutine
-
 !------------------------------------------------------------------------------
-  subroutine lanczos_band_d_md(m, n, d, md, niter, blks, Q, eval)
+  subroutine lanczos_band_matvec(matrix_vector, n, niter, blks, Q, eval)
     use modmain, only : zone, zzero
     implicit none
     ! input / output
-    integer,    intent(in)    :: m
+    interface
+      subroutine matrix_vector(n, zq, zr)
+        integer,    intent(in)  :: n
+        complex(8), intent(in)  :: zq(n)
+        complex(8), intent(out) :: zr(n)
+      end subroutine matrix_vector
+    end interface
     integer,    intent(in)    :: n
-    real(8),    intent(in)    :: d(n)
-    complex(8), intent(in)    :: md(m,n)
     integer,    intent(in)    :: niter
     integer,    intent(in)    :: blks
     complex(8), intent(inout) :: Q(n,blks*niter)
@@ -495,7 +469,7 @@ contains
     do i = 1, ld
 
       ! r = H*q_i
-      call matrix_vector(m, n, d, md, Q(:,i), zr)
+      call matrix_vector(n, Q(:,i), zr)
 
       ! r = r - \sum T_ij*q_j
       do j = max(1,i-blks), i-1
@@ -526,7 +500,7 @@ contains
         write(*,*) 'WARNING(mod_lanczos::lanczos_band): Zero basis vector! Quit execution...'
         exit
         ! one should do something here ...
-        ! reduce block size?
+        ! change the block size?
       end if
 
     end do ! iteration loop

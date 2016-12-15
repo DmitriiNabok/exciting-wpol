@@ -323,7 +323,7 @@ contains
     real(8)    :: x, y, t1, t2
     complex(8) :: zt1
     complex(8), allocatable :: mwt(:)
-    complex(8), external    :: zdotc, zdotu
+    complex(8), external :: zdotc
 
     zsum = 0.d0
     allocate(mwt(nvck))
