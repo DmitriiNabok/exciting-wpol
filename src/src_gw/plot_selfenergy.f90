@@ -5,7 +5,7 @@ subroutine plot_selfenergy()
     use modmain
     use modgw
     use mod_selfenergy, only : evalks, evalqp, selfex, selfec, iopac, &
-    &                          init_selfenergy, delete_selfenergy
+    &                          init_selfenergy, delete_selfenergy, eferks
     use mod_vxc,        only : vxcnn, read_vxcnn
     use mod_frequency
     use mod_hdf5
@@ -129,8 +129,9 @@ subroutine plot_selfenergy()
     do ik = 1, kset%nkpt
       do ie = ibgw, nbgw
 
-        ! enk = evalks(ie,ik)-eferks
+        enk = evalks(ie,ik)-eferks
         ! enk = evalqp(ie,ik)-eferqp
+        
         do iom = 1, freq%nomeg
           zy(iom) = selfec(ie,iom,ik)
         end do
@@ -145,15 +146,26 @@ subroutine plot_selfenergy()
               !----------------
               ! real frequency
               !----------------
-              call padecof(freq%nomeg,zx,zy,n,p)
+              ! call padecof(freq%nomeg,zx,zy,n,p)
+              ! do iom = 1, nom
+              !   ein = cmplx(om(iom),eta,8)
+              !   call gpade(freq%nomeg,zx,n,p,ein,sigma)
+              !   if (om(iom)<0.d0) then
+              !     selfc(ie,iom,ik) = conjg(sigma)
+              !   else
+              !     selfc(ie,iom,ik) = sigma
+              !   end if
+              ! end do
+
+              call setsac(iopac, freq%nomeg, npar, &
+              &           enk, selfec(ie,:,ik), &
+              &           freq%freqs, a, poles)
               do iom = 1, nom
-                ein = cmplx(om(iom),eta,8)
-                call gpade(freq%nomeg,zx,n,p,ein,sigma)
-                if (om(iom)<0.d0) then
-                  selfc(ie,iom,ik) = conjg(sigma)
-                else
-                  selfc(ie,iom,ik) = sigma
-                end if
+                ein = cmplx(om(iom)-eferks,eta,8)
+                call getsac(iopac, freq%nomeg, npar, &
+                &           enk, ein, freq%freqs, &
+                &           a, sigma, dsig)
+                selfc(ie,iom,ik) = sigma
               end do
                         
             case('imag')
@@ -186,15 +198,26 @@ subroutine plot_selfenergy()
               !----------------
               ! real frequency
               !----------------
-              call setsac(iopac,freq%nomeg,npar,1.d0,selfec(ie,:,ik),freq%freqs,a,poles)
+              ! call setsac(iopac,freq%nomeg,npar,1.d0,selfec(ie,:,ik),freq%freqs,a,poles)
+              ! do iom = 1, nom
+              !   ein = cmplx(om(iom),eta,8)
+              !   call getsac(iopac,nom,npar,1.d0,ein,om,a,sigma,dsig)
+              !   if (om(iom)<0.d0) then
+              !     selfc(ie,iom,ik) = conjg(sigma)
+              !   else
+              !     selfc(ie,iom,ik) = sigma
+              !   end if
+              ! end do
+
+              call setsac(iopac, freq%nomeg, npar, &
+              &           enk, selfec(ie,:,ik), &
+              &           freq%freqs, a, poles)
               do iom = 1, nom
-                ein = cmplx(om(iom),eta,8)
-                call getsac(iopac,nom,npar,1.d0,ein,om,a,sigma,dsig)
-                if (om(iom)<0.d0) then
-                  selfc(ie,iom,ik) = conjg(sigma)
-                else
-                  selfc(ie,iom,ik) = sigma
-                end if
+                ein = cmplx(om(iom)-eferks,0.d0,8)
+                call getsac(iopac, freq%nomeg, npar, &
+                &           enk, ein, freq%freqs, &
+                &           a, sigma, dsig)
+                selfc(ie,iom,ik) = sigma
               end do
                     
             case('imag')

@@ -207,10 +207,6 @@ contains
 #endif
 
         if (Gamma) then
-#ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,sigma1,sigma2)
-!$OMP DO
-#endif          
           ! loop over frequencies
           do iom = 1, freq%nomeg
             call sum_singular(n,jkp,iom,mw,sigma1,sigma2)
@@ -218,10 +214,6 @@ contains
             &                  coefs1*sigma1   + &
             &                  coefs2*sigma2
           end do
-#ifdef USEOMP
-!$OMP END DO
-!$OMP END PARALLEL
-#endif
         end if
 
       end do ! n
@@ -265,9 +257,22 @@ contains
       modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
       q0eps(:) = q0eps(:)/modq0
 
+#ifdef USEOMP
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(i,zt1,zt2)
+!$omp do reduction (+:sigma1,sigma2)
+#endif
       do i = 1, nvck
+        !------------------
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
+        !------------------
+        ! t1 = tvck(i) * ( om - enk + sign(1,nomax-n)*tvck(i) )
+        ! t2 = tvck(i) * sign(1,nomax-n) * eta
+        ! zt1 = 0.5d0*cmplx( t1 / ( t1*t1 + t2*t2 ), &
+        ! &                  t2 / ( t1*t1 + t2*t2 ), 8)
+        !------------------
         zt2 = wvck0(i,1)*q0eps(1)+ &
         &     wvck0(i,2)*q0eps(2)+ &
         &     wvck0(i,3)*q0eps(3)
@@ -278,11 +283,21 @@ contains
         ! contribution from the second+third term: 1/q
         sigma1 = sigma1 + zt1 * ( zt2*conjg(mw(n,i)) + conjg(zt2)*mw(n,i) )
       end do
+#ifdef USEOMP
+!$omp end do
+!$omp end parallel
+#endif      
 
     case('sphavrg')
 
       c1 = sqrt(1.d0/3.d0)
       c2 = sqrt(1.d0/6.d0)
+#ifdef USEOMP
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(i,zt1,p,zt2)
+!$omp do reduction (+:sigma1,sigma2)
+#endif      
       do i = 1, nvck
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
@@ -299,6 +314,10 @@ contains
         ! There is no contribution from the second+third term: 1/q
         sigma1 = zzero
       end do
+#ifdef USEOMP
+!$omp end do
+!$omp end parallel
+#endif
 
     case default
       write(*,*) "ERROR(mod_wpol_selfc::sum_singular): Unknown averaging type!"
@@ -334,10 +353,14 @@ contains
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
         !------------------
-        ! complex version
-        !------------------
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-m)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
+        !------------------
+        ! t1 = tvck(i) * ( om - enk + sign(1,nomax-m)*tvck(i) )
+        ! t2 = tvck(i) * sign(1,nomax-m) * eta
+        ! zt1 = 0.5d0*cmplx( t1 / ( t1*t1 + t2*t2 ), &
+        ! &                  t2 / ( t1*t1 + t2*t2 ), 8)
+        !------------------
         mwt(i) = zt1*mw(m,i)
       end do
       ! sum over vck

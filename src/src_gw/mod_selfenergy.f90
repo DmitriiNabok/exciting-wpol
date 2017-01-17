@@ -29,6 +29,7 @@ module mod_selfenergy
     !-------------!
     
     ! Original KS energies (evalsv will updated via self-consistent cycle)
+    real(8) :: eferks
     real(8), allocatable :: evalks(:,:)
     
     ! QP energies

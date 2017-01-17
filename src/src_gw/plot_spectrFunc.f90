@@ -174,8 +174,9 @@ contains
       do j = 1, n
         z(i) = z(i) + y(j) * gaussian(x(i), x(j), s)
       end do
+      z(i) = z(i) / dble(n)
     end do
-    y = 2.0d0 * z / dble(n)
+    y = z
 
   end subroutine
 
@@ -183,8 +184,10 @@ contains
     real(8), intent(in) :: x
     real(8), intent(in) :: m
     real(8), intent(in) :: s
+    
     gaussian = exp(-(x-m)**2/(2.d0*s**2)) / sqrt(2.d0*pi*s**2)
     ! gaussian = exp(-(x-m)**2/(2.d0*s**2))
+    
     return
   end function
 
