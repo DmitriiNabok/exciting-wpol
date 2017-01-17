@@ -273,9 +273,7 @@ contains
         ! zt1 = 0.5d0*cmplx( t1 / ( t1*t1 + t2*t2 ), &
         ! &                  t2 / ( t1*t1 + t2*t2 ), 8)
         !------------------
-        zt2 = wvck0(i,1)*q0eps(1)+ &
-        &     wvck0(i,2)*q0eps(2)+ &
-        &     wvck0(i,3)*q0eps(3)
+        zt2 = wvck(mbsiz+1,i)
         !---------------------------------------------------
         ! contribution from the first term: 1/q^2
         sigma2 = sigma2 + zt1 * zt2*conjg(zt2)
@@ -301,9 +299,9 @@ contains
       do i = 1, nvck
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
-        p(1) = c2*(zi*wvck0(i,2)+wvck0(i,1))
-        p(2) = c1*wvck0(i,3)
-        p(3) = c2*(zi*wvck0(i,2)-wvck0(i,1))
+        p(1) = c2*(zi*wvck(mbsiz+2,i)+wvck(mbsiz+1,i))
+        p(2) = c1*wvck(mbsiz+3,i)
+        p(3) = c2*(zi*wvck(mbsiz+2,i)-wvck(mbsiz+1,i))
         zt2 = ( p(1)*conjg(p(1))+ &
         &       p(2)*conjg(p(2))+ &
         &       p(3)*conjg(p(3)) )

@@ -8,7 +8,7 @@ module mod_wpol
   implicit none
   
   integer, private :: ndim, mdim
-  integer, public  :: nvck, nvck0
+  integer, public  :: nvck, nvck0, mbdim
 
   ! index mapping array
   integer,    allocatable :: a2vck(:,:)
@@ -19,7 +19,7 @@ module mod_wpol
   real(8),    allocatable :: tvck(:)
   complex(8), allocatable :: wvck(:,:)
   complex(8), allocatable :: wvck0(:,:)
-  public :: tvck, wvck, wvck0
+  public :: tvck, wvck
 
   real(8),    allocatable :: d(:)
   complex(8), allocatable :: md(:,:)
@@ -179,6 +179,7 @@ contains
     complex(8) :: zt1, wkp
     complex(8), allocatable :: evecsv(:,:,:)
 
+    mbdim = mbsiz
     if (Gamma) then      
       ! val-val
       if (allocated(pmatvv)) deallocate(pmatvv)
@@ -196,14 +197,22 @@ contains
         &    Action='READ',Form='UNFORMATTED', &
         &    Access='DIRECT',Status='OLD',Recl=recl)
       end if
-      allocate(pm(nvck0,3))
-      pm(:,:) = 0.d0
+      !
+      select case(input%gw%scrcoul%sciavtype)
+      case('isotropic')
+        mbdim = mbsiz+1
+      case('sphavrg')
+        mbdim = mbsiz+3
+      case default
+        write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
+        stop
+      end select  
     end if
 
     ! global arrays
     allocate(d(nvck0))
     d(:) = 0.d0
-    allocate(md(mbsiz,nvck0))
+    allocate(md(mbdim,nvck0))
     md(:,:) = 0.d0  
 
     ! local data
@@ -251,7 +260,7 @@ contains
         i = vck2a(n,m,ik)
         if (n <= nomax) then
           de = evalsv(m,jkp)-evalsv(n,ikp)
-          if (Gamma) pm(i,:) = prefac * pmatvv(n,m,:) / sqrt(de)
+          if (Gamma) call q0_treatment_setup(i,prefac/sqrt(de),pmatvv(n,m,:))
         else
           icg = n-nomax
           is  = corind(icg,1)
@@ -259,7 +268,7 @@ contains
           ic  = corind(icg,3)
           ias = idxas(ia,is)
           de  = evalsv(m,jkp)-evalcr(ic,ias)
-          if (Gamma) pm(i,:) = prefac * pmatcv(icg,m,:) / sqrt(de)
+          if (Gamma) call q0_treatment_setup(i,prefac/sqrt(de),pmatcv(icg,m,:))
         end if
         if (abs(de) < 1.d-6) then
           write(*,*) "WARNING(mod_wpol::calc_md_dmmd) Near degenerate eigenvalues ", n, m
@@ -324,21 +333,20 @@ contains
         write(*,*) '    (test) First-order perturbation theory'
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
-        call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
-        &           zone, md, mbsiz, md, mbsiz,  &
+        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+        &           zone, md, mbdim, md, mbdim,  &
         &           zzero, dmmd, nvck)
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
-        if (Gamma) call add_q0_contribution()
         allocate(tvck(nvck))
         call wpol_pert(nvck,d,dmmd,tvck)
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-        &           zone, md, mbsiz, dmmd, nvck, &
-        &           zzero, wvck, mbsiz)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
         deallocate(dmmd)
          
       case ('lanczos')
@@ -368,9 +376,9 @@ contains
             call mkl_qr(nvck0, blks, evec(:,1:blks))
 
           case ('svd')
-            allocate(zmat(mbsiz,nvck0))
+            allocate(zmat(mbdim,nvck0))
             zmat(:,:) = md(:,:)
-            call orthogonalize(mbsiz, nvck0, zmat)
+            call orthogonalize(mbdim, nvck0, zmat)
             do i = 1, blks
               evec(:,i) = conjg(zmat(i,:))
             end do
@@ -386,19 +394,11 @@ contains
         call lanczos_band_matvec(matrix_vector, nvck0, niter, blks, evec, tvck)
         
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck0, &
-        &           zone, md, mbsiz, evec, nvck0, &
-        &           zzero, wvck, mbsiz)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
+        &           zone, md, mbdim, evec, nvck0, &
+        &           zzero, wvck, mbdim)
 
-        if (Gamma) then
-          ! Eq. (2.38) i=0, n/=n' term
-          allocate(wvck0(nvck,3))
-          call zgemm( 't', 'n', nvck, 3, nvck0, &
-          &           -zone, evec, nvck0, pm, nvck0, &
-          &           zzero, wvck0, nvck)
-        end if
-        
         ! clear memory
         deallocate(evec)
 
@@ -411,33 +411,22 @@ contains
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
-        call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
-        &           zone, md, mbsiz, md, mbsiz,  &
+        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+        &           zone, md, mbdim, md, mbdim,  &
         &           zzero, dmmd, nvck)
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
-
-        if (Gamma) call add_q0_contribution()
 
         allocate(tvck(nvck))
         ! call mkl_zheev(nvck,dmmd,tvck)
         call mkl_zheevr(nvck,dmmd,tvck)
 
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-        &           zone, md, mbsiz, dmmd, nvck, &
-        &           zzero, wvck, mbsiz)
-
-        if (Gamma) then
-          ! Eq. (2.38) i=0, n/=n' term
-          allocate(wvck0(nvck,3))
-          call zgemm( 't', 'n', nvck, 3, nvck, &
-          &           -zone, dmmd, nvck, pm, nvck, &
-          &           zzero, wvck0, nvck)
-        end if
-
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
         deallocate(dmmd)
 
       case ('rank1')
@@ -447,11 +436,11 @@ contains
         write(*,*) '    Rank-1 update diagonalization'
 
         ! SVD of M*D^{1/2}
-        n = min(mbsiz, nvck0)
+        n = min(mbdim, nvck0)
         allocate(eval(n))
-        allocate(evec(mbsiz,nvck0))
+        allocate(evec(mbdim,nvck0))
         evec(:,:) = md(:,:)
-        call generate_update_vectors(mbsiz, nvck0, evec, eval)
+        call generate_update_vectors(mbdim, nvck0, evec, eval)
 
         ! Rank-1 update iterations
         nvck = nvck0
@@ -480,10 +469,10 @@ contains
         deallocate(z, evec, eval)
 
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-        &           zone, md, mbsiz, dmmd, nvck, &
-        &           zzero, wvck, mbsiz)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
         
         deallocate(dmmd)
 
@@ -528,77 +517,31 @@ contains
     end do
 
     ! M*q
-    allocate(zv(mbsiz))
-    call zgemv('n', mbsiz, n, zone, md, mbsiz, zq, 1, zzero, zv, 1)
+    allocate(zv(mbdim))
+    call zgemv('n', mbdim, n, zone, md, mbdim, zq, 1, zzero, zv, 1)
     ! M^{+}*M*q
-    call zgemv('c', mbsiz, n, zone, md, mbsiz, zv, 1, zone,  zr, 1)
+    call zgemv('c', mbdim, n, zone, md, mbdim, zv, 1, zone,  zr, 1)
     deallocate(zv)
-
-    ! P^{+}*P*q
-    if (Gamma) then
-
-      select case(input%gw%scrcoul%sciavtype)
-
-      case('isotropic')
-        ! q->0 direction
-        q0eps(:) = input%gw%scrcoul%q0eps(:)
-        modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
-        q0eps(:) = q0eps(:)/modq0
-        allocate(zv(n))
-        do i = 1, n
-          zv(i) = pm(i,1)*q0eps(1)+ &
-          &       pm(i,2)*q0eps(2)+ &
-          &       pm(i,3)*q0eps(3)
-        end do
-        ! u^{+}*u*q
-        do i = 1, n
-          zr(i) = zr(i) + conjg(zv(i))*zdotu(n, zv, 1, zq, 1)
-        end do
-        deallocate(zv)
-
-      case('sphavrg')
-        c1 = 1.d0
-        c2 = sqrt(0.5d0)
-        allocate(zv(n))
-        do i = 1, n
-          p1(1) = c2*(zi*pm(i,2)+pm(i,1))
-          p1(2) = c1*pm(i,3)
-          p1(3) = c2*(zi*pm(i,2)-pm(i,1))
-          do j = 1, n
-            p2(1) = c2*(zi*pm(j,2)+pm(j,1))
-            p2(2) = c1*pm(j,3)
-            p2(3) = c2*(zi*pm(j,2)-pm(j,1))
-            zv(j) = conjg(p1(1))*p2(1) + &
-            &       conjg(p1(2))*p2(2) + &
-            &       conjg(p1(3))*p2(3)
-          end do
-          zr(i) = zr(i) + zdotu(n, zv, 1, zq, 1)
-        end do
-        deallocate(zv)
-
-      case default
-        write(*,*) "ERROR(mod_wpol::matrix_vector): Unknown averaging type!"
-        stop
-      end select
-
-    end if    
 
     return
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine add_q0_contribution()
+  subroutine q0_treatment_setup(i,prefac,p)
     use modinput
-    use modmain, only : pi, omega, zone, zi
+    use modmain, only : pi, zi
     implicit none
-    integer :: i, j
-    real(8) :: f1, f2, c1, c2
-    complex(8) :: p1(3), p2(3)
-    complex(8), allocatable :: zv(:)
-    real(8)    :: q0eps(3), modq0
+    ! inpout
+    integer,    intent(in) :: i
+    real(8),    intent(in) :: prefac
+    complex(8), intent(in) :: p(3)
+    ! local
+    real(8) :: c1, c2
+    real(8) :: q0eps(3), modq0
+
+    ! singular term: v^{1/2} M^{0} D^{1/2}
 
     select case(input%gw%scrcoul%sciavtype)
-    
     case('isotropic')
 
       ! q->0 direction
@@ -606,21 +549,9 @@ contains
       modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
       q0eps(:) = q0eps(:)/modq0
 
-      allocate(zv(nvck))
-      do i = 1, nvck
-        zv(i) = pm(i,1)*q0eps(1)+ &
-        &       pm(i,2)*q0eps(2)+ &
-        &       pm(i,3)*q0eps(3)
-      end do
-
-      do i = 1, nvck
-        do j = i, nvck
-          dmmd(j,i) = dmmd(j,i) + conjg(zv(j))*zv(i)
-          dmmd(i,j) = conjg(dmmd(j,i))
-        end do
-      end do
-
-      deallocate(zv)
+      md(mbsiz+1,i) = prefac * ( p(1)*q0eps(1)+ &
+      &                          p(2)*q0eps(2)+ &
+      &                          p(3)*q0eps(3) )
 
     case('sphavrg')
 
@@ -629,25 +560,14 @@ contains
       c1 = 1.d0
       c2 = sqrt(0.5d0)
 
-      do i = 1, nvck
-        p1(1) = c2*(zi*pm(i,2)+pm(i,1))
-        p1(2) = c1*pm(i,3)
-        p1(3) = c2*(zi*pm(i,2)-pm(i,1))
-        do j = i, nvck
-          p2(1) = c2*(zi*pm(j,2)+pm(j,1))
-          p2(2) = c1*pm(j,3)
-          p2(3) = c2*(zi*pm(j,2)-pm(j,1))
-          dmmd(j,i) = dmmd(j,i) + &
-          &           ( conjg(p2(1))*p1(1) + &
-          &             conjg(p2(2))*p1(2) + &
-          &             conjg(p2(3))*p1(3) )
-          dmmd(i,j) = conjg(dmmd(j,i))
-        end do
-      end do
+      md(mbsiz+1,i) = c2*(zi*p(2)+p(1))
+      md(mbsiz+2,i) = c1*p(3)
+      md(mbsiz+3,i) = c2*(zi*p(2)-p(1))
 
     case default
       write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
       stop
+
     end select
 
     return
