@@ -123,7 +123,6 @@ contains
       ! clean unused data
       deallocate(tvck)
       deallocate(wvck)
-      if (Gamma) deallocate(wvck0)
       deallocate(mpwipw)
       deallocate(barc)
 

@@ -23,7 +23,6 @@ module mod_wpol
 
   real(8),    allocatable :: d(:)
   complex(8), allocatable :: md(:,:)
-  complex(8), allocatable :: pm(:,:)
   complex(8), allocatable :: dmmd(:,:)
   complex(8), allocatable :: wij(:,:,:)
   private :: d, md, dmmd, wij
@@ -304,6 +303,57 @@ contains
     return
   end subroutine
 
+
+!--------------------------------------------------------------------------------
+  subroutine q0_treatment_setup(i,prefac,p)
+    use modinput
+    use modmain, only : pi, zi
+    implicit none
+    ! inpout
+    integer,    intent(in) :: i
+    real(8),    intent(in) :: prefac
+    complex(8), intent(in) :: p(3)
+    ! local
+    real(8) :: c1, c2
+    real(8) :: q0eps(3), modq0
+
+    ! singular term: v^{1/2} M^{0} D^{1/2}
+
+    select case(input%gw%scrcoul%sciavtype)
+    case('isotropic')
+
+      ! q->0 direction
+      q0eps(:) = input%gw%scrcoul%q0eps(:)
+      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
+      q0eps(:) = q0eps(:)/modq0
+
+      md(mbsiz+1,i) = -prefac * ( p(1)*q0eps(1)+ &
+      &                           p(2)*q0eps(2)+ &
+      &                           p(3)*q0eps(3) )
+
+    case('sphavrg')
+
+      ! c1 = sqrt(4.d0*pi/3.d0)
+      ! c2 = sqrt(2.d0*pi/3.d0)
+      c1 = 1.d0
+      c2 = sqrt(0.5d0)
+      ! c1 = sqrt(1.d0/3.d0)
+      ! c2 = sqrt(1.d0/6.d0)
+
+      md(mbsiz+1,i) = -prefac * c2*(zi*p(2)+p(1))
+      md(mbsiz+2,i) = -prefac * c1*p(3)
+      md(mbsiz+3,i) = -prefac * c2*(zi*p(2)-p(1))
+
+    case default
+      write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
+      stop
+
+    end select
+
+    return
+  end subroutine
+
+
 !--------------------------------------------------------------------------------
   subroutine diagonalize_dmmd(iq)
     use mod_wpol_pert
@@ -322,7 +372,7 @@ contains
     write(*,*) '    Matrix size: ', nvck0
 
     if (.not.associated(input%gw%eigensolver)) &
-    & input%gw%eigensolver => getstructeigensolver(emptynode)
+    &  input%gw%eigensolver => getstructeigensolver(emptynode)
    
     select case (input%gw%eigensolver%method)
 
@@ -526,52 +576,6 @@ contains
     return
   end subroutine
 
-!--------------------------------------------------------------------------------
-  subroutine q0_treatment_setup(i,prefac,p)
-    use modinput
-    use modmain, only : pi, zi
-    implicit none
-    ! inpout
-    integer,    intent(in) :: i
-    real(8),    intent(in) :: prefac
-    complex(8), intent(in) :: p(3)
-    ! local
-    real(8) :: c1, c2
-    real(8) :: q0eps(3), modq0
-
-    ! singular term: v^{1/2} M^{0} D^{1/2}
-
-    select case(input%gw%scrcoul%sciavtype)
-    case('isotropic')
-
-      ! q->0 direction
-      q0eps(:) = input%gw%scrcoul%q0eps(:)
-      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
-      q0eps(:) = q0eps(:)/modq0
-
-      md(mbsiz+1,i) = prefac * ( p(1)*q0eps(1)+ &
-      &                          p(2)*q0eps(2)+ &
-      &                          p(3)*q0eps(3) )
-
-    case('sphavrg')
-
-      ! c1 = sqrt(4.d0*pi/3.d0)
-      ! c2 = sqrt(2.d0*pi/3.d0)
-      c1 = 1.d0
-      c2 = sqrt(0.5d0)
-
-      md(mbsiz+1,i) = c2*(zi*p(2)+p(1))
-      md(mbsiz+2,i) = c1*p(3)
-      md(mbsiz+3,i) = c2*(zi*p(2)-p(1))
-
-    case default
-      write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
-      stop
-
-    end select
-
-    return
-  end subroutine
 
 !--------------------------------------------------------------------------------
   subroutine calc_wmat()
@@ -623,7 +627,6 @@ contains
     if (allocated(md))   deallocate(md)
     if (allocated(dmmd)) deallocate(dmmd)
     if (allocated(wij))  deallocate(wij)
-    if (allocated(pm))   deallocate(pm)
   end subroutine
 
 !--------------------------------------------------------------------------------
