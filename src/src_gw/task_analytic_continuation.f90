@@ -5,8 +5,9 @@ subroutine task_analytic_continuation()
     use modmain
     use modgw
     use mod_selfenergy, only : evalks, evalqp, eferqp, &
-    &                          init_selfenergy, delete_selfenergy
-    use mod_vxc,        only : vxcnn
+    &                          init_selfenergy, delete_selfenergy, &
+    &                          read_selfexnn, read_selfecnn
+    use mod_vxc,        only : vxcnn, read_vxcnn
     use mod_frequency
     use mod_hdf5
     use mod_mpi_gw
@@ -51,24 +52,18 @@ subroutine task_analytic_continuation()
         call hdf5_read(fgwh5,path,"selfec",selfec(ibgw,1,ik),(/nbandsgw,freq%nomeg/))
       end do ! ik
 #else
+
       do ik = 1, kset%nkpt
         ik_ = kset%ikp2ik(ik)
         call getevalsvgw_new('GW_EVALSV.OUT',ik_,kqset%vkl(:,ik_), &
         &                     nstsv,evalsv(1,ik))
         evalks(ibgw:nbgw,ik) = evalsv(ibgw:nbgw,ik)
       end do
-      call getunit(fid)
-      open(fid,file='VXCNN.OUT',form='FORMATTED',status='OLD',action='READ')
-      do ik = 1, kset%nkpt
-        read(fid,*) s1, ik_, s2, kset%vkl(:,ik)
-        do ie = ibgw, nbgw
-          read(fid,*) ie_, vxcnn(ie,ik)
-        end do
-        read(fid,*)
-      end do
-      close(fid)
-      call readselfx
-      call readselfc
+
+      call read_vxcnn()
+      call read_selfexnn()
+      call read_selfecnn()
+
 #endif
 
       ! KS states analysis
