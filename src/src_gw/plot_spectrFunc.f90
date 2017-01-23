@@ -12,7 +12,7 @@ subroutine plot_spectrFunc()
   integer :: fid1, fid2, fid3, fid4, fid5, fid6, fid7
   integer :: n, iom, ik, ib
   character(30) :: frmt
-  real(8),    allocatable :: enk(:), sf(:), sfunc(:,:,:)
+  real(8),    allocatable :: enk(:), sf(:), sfunc(:,:,:), sftot(:)
   real(8),    allocatable :: ynk(:), sfd(:)
   complex(8), allocatable :: sx(:), sc(:), vxc(:)
   real(8)    :: scr, sci, om, om1, dE, eta, t1
@@ -71,6 +71,7 @@ if (rank == 0) then
   write(*,*) 'nomax, ikvbm, dE = ', nomax, ikvbm, dE
 
   do ik = 1, kset%nkpt
+
     write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
     do iom = 1, freq%nomeg
       om  = freq%freqs(iom)
@@ -106,7 +107,7 @@ if (rank == 0) then
       end do
       write(fid7,trim(frmt)) om1, sfd
 
-    end do
+    end do ! iom
     write(fid1,*); write(fid1,*)
     write(fid2,*); write(fid2,*)
     write(fid3,*); write(fid3,*)
@@ -115,7 +116,7 @@ if (rank == 0) then
     write(fid6,*); write(fid6,*)
     write(fid7,*); write(fid7,*)
     
-  end do
+  end do ! ik
 
   deallocate(enk,sf)
   deallocate(sx,sc,vxc)
@@ -132,23 +133,41 @@ if (rank == 0) then
   !--------------------
   ! Gaussian smearing
   !--------------------
-  if (.not.associated(input%gw%selfenergy%SpectralFunctionPlot)) &
-  &  input%gw%selfenergy%SpectralFunctionPlot => getstructspectralfunctionplot(emptynode)
-  eta = input%gw%selfenergy%SpectralFunctionPlot%eta
-  write(*,*) 'eta = ', eta
-  open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
-  do ik = 1, kset%nkpt
-    do ib = ibgw, nbgw
-      call apply_Gaussian_smearing(freq%nomeg, freq%freqs, sfunc(ib,:,ik), eta)
+  ! if (.not.associated(input%gw%selfenergy%SpectralFunctionPlot)) &
+  ! &  input%gw%selfenergy%SpectralFunctionPlot => getstructspectralfunctionplot(emptynode)
+  ! eta = input%gw%selfenergy%SpectralFunctionPlot%eta
+  ! write(*,*) 'eta = ', eta
+  ! open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  ! do ik = 1, kset%nkpt
+  !   do ib = ibgw, nbgw
+  !     call apply_Gaussian_smearing(freq%nomeg, freq%freqs, sfunc(ib,:,ik), eta)
+  !   end do
+  !   do iom = 1, freq%nomeg
+  !     write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sfunc(:,iom,ik)
+  !   end do
+  !   write(fid1,*); write(fid1,*)
+  ! end do
+  ! close(fid1)
+
+
+  !-------------------------
+  ! Total spectral function
+  !-------------------------
+  allocate(sftot(freq%nomeg))
+  sftot(:) = 0.d0
+  do iom = 1, freq%nomeg
+    do ik = 1, kset%nkpt
+      sftot(iom) = sftot(iom) + kset%wkpt(ik)*sum(sfunc(ibgw:nbgw,iom,ik))
     end do
-    do iom = 1, freq%nomeg
-      write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sfunc(:,iom,ik)
-    end do
-    write(fid1,*); write(fid1,*)
+  end do
+  open(fid1,file='SF-tot.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  do iom = 1, freq%nomeg
+    write(fid1,'(2f18.8)') freq%freqs(iom)-efermi, sftot(iom)
   end do
   close(fid1)
-  deallocate(sfunc)
+  deallocate(sftot)
 
+  deallocate(sfunc)
 
 end if ! rank == 0
 
