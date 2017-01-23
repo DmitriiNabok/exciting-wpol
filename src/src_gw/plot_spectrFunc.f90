@@ -130,26 +130,6 @@ if (rank == 0) then
   close(fid6)
   close(fid7)
 
-  !--------------------
-  ! Gaussian smearing
-  !--------------------
-  ! if (.not.associated(input%gw%selfenergy%SpectralFunctionPlot)) &
-  ! &  input%gw%selfenergy%SpectralFunctionPlot => getstructspectralfunctionplot(emptynode)
-  ! eta = input%gw%selfenergy%SpectralFunctionPlot%eta
-  ! write(*,*) 'eta = ', eta
-  ! open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
-  ! do ik = 1, kset%nkpt
-  !   do ib = ibgw, nbgw
-  !     call apply_Gaussian_smearing(freq%nomeg, freq%freqs, sfunc(ib,:,ik), eta)
-  !   end do
-  !   do iom = 1, freq%nomeg
-  !     write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sfunc(:,iom,ik)
-  !   end do
-  !   write(fid1,*); write(fid1,*)
-  ! end do
-  ! close(fid1)
-
-
   !-------------------------
   ! Total spectral function
   !-------------------------
@@ -165,9 +145,35 @@ if (rank == 0) then
     write(fid1,'(2f18.8)') freq%freqs(iom)-efermi, sftot(iom)
   end do
   close(fid1)
-  deallocate(sftot)
+
+  !--------------------
+  ! Gaussian smearing
+  !--------------------
+  if (.not.associated(input%gw%selfenergy%SpectralFunctionPlot)) &
+  &  input%gw%selfenergy%SpectralFunctionPlot => getstructspectralfunctionplot(emptynode)
+  eta = input%gw%selfenergy%SpectralFunctionPlot%eta
+  write(*,*) 'eta = ', eta
+  open(fid1,file='SF-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  do ik = 1, kset%nkpt
+    do ib = ibgw, nbgw
+      call apply_Gaussian_smearing(freq%nomeg, freq%freqs, sfunc(ib,:,ik), eta)
+    end do
+    do iom = 1, freq%nomeg
+      write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sfunc(:,iom,ik)
+    end do
+    write(fid1,*); write(fid1,*)
+  end do
+  close(fid1)  
+
+  open(fid1,file='SF-tot-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  call apply_Gaussian_smearing(freq%nomeg, freq%freqs, sftot, eta)
+  do iom = 1, freq%nomeg
+    write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sftot(iom)
+  end do
+  close(fid1)
 
   deallocate(sfunc)
+  deallocate(sftot)
 
 end if ! rank == 0
 
@@ -183,17 +189,20 @@ contains
     real(8), intent(in)    :: eta
     integer :: i, j
     real(8) :: s
-    real(8) :: z(n)
+    real(8) :: z(n), w(n)
 
     ! eta = FWHM = 2 sqrt(2ln2) s
     s = eta / 2.35482
 
     do i = 1, n
       z(i) = 0.d0
+      w(i) = 0.d0
       do j = 1, n
         z(i) = z(i) + y(j) * gaussian(x(i), x(j), s)
+        w(i) = w(i) + gaussian(x(i), x(j), s)
       end do
-      z(i) = z(i) / dble(n)
+      ! z(i) = z(i) / dble(n)
+      z(i) = z(i) / w(i)
     end do
     y = z
 
