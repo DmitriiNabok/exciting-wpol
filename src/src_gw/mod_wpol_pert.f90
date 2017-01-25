@@ -9,44 +9,48 @@ module mod_wpol_pert
 contains
 
   ! uses perturbation theory to calculate the eigenvalues and eigenvectors of the D^2+DMMD matrix 
-  subroutine wpol_pert(nvck,d,dmmd,tvck)
+  subroutine wpol_pert(nvck,d,dmmd,tvck,cutoff)
 
     implicit none
  
     integer,    intent(in)    :: nvck
-    real(8),    intent(in)    :: d(nvck)
+    real(8),    intent(in)    :: d(nvck),cutoff
     complex(8), intent(inout) :: dmmd(nvck,nvck)
     real(8),    intent(out)   :: tvck(nvck)   
     !local
-    integer, allocatable :: degsub(:,:), tmp(:,:)
-    integer :: nsub,ndeg,m,n
-    real(8) :: maxdmmd  
+    integer :: degsub(nvck),ndeg
+    integer, allocatable :: nsub(:),tmp(:)
+	real(8) :: maxdmmd
     
-    maxdmmd=maxval(abs(dmmd))
     
-    ! degsub(:,:) contains all degenerate subsets
-    allocate(degsub(nvck,nvck))
-    call find_degeneracy(nvck,d,degsub,nsub,ndeg,maxdmmd)
+    !the cutoff to determine the subsets
+    write(*,*) 'Cutoff: ',cutoff
     
-    !reallocate degsub to max. amount of degeneracy found
-    allocate(tmp(nsub,ndeg))
-    do m= 1, nsub
-    do n = 1, ndeg
-      tmp(m,n) = degsub(m,n)
-    end do
-    end do
-    deallocate(degsub)
-
-    allocate(degsub(nsub,ndeg))
-    call move_alloc(tmp,degsub)
+    !maximal amount of degeneracies is none
+    allocate(nsub(nvck))
     
-    write(*,*) 'Subsets: ',nsub
-    write(*,*) 'Max amount of degeneracy: ',ndeg
+    ! degsub contains all degenerate subsets
+    ! nsub contains how many elements each subset has
+    call find_degeneracy(nvck,d,degsub,nsub,ndeg,cutoff)
+    write(*,*) 'subsets: ',ndeg
+    
+    allocate(tmp(ndeg))
+    tmp(:)=nsub(1:ndeg)
+    deallocate(nsub)
+    allocate(nsub(ndeg))
+    call move_alloc(tmp,nsub) 
 
     ! apply perturbation theory and diagonalize the subsets if necessary
-    call apply_pert_theory_1st(nvck,degsub,nsub,ndeg,d,dmmd,tvck)
+    call apply_pert_theory_1st(nvck,degsub,nsub,ndeg,d,dmmd,tvck,maxdmmd)
     
-    deallocate(degsub)
+	!write convergence to file
+	open(73,file='pert_test.dat',form='FORMATTED',status='UNKNOWN',action='WRITE',position='append')
+	write(73,*) 'Cutoff: ', cutoff
+	write(73,*) 'Maximum dmmd/DeltaE: ',maxdmmd
+	write(73,*) 'Subsets: ',ndeg
+	close(73)
+	
+    deallocate(nsub)
  
   end subroutine
 
@@ -54,61 +58,39 @@ contains
 !--------------------------------------------------------------------------------------------------- 
 
   ! find sets of degenerate eigenvalues
-  subroutine find_degeneracy(nvck,d,degsub,nsub,ndeg,maxdmmd)
+  subroutine find_degeneracy(nvck,d,degsub,nsub,ndeg,cutoff)
     implicit none
     integer, intent(in)  :: nvck
-    real(8), intent(in)  :: d(nvck),maxdmmd
-    integer, intent(out) :: degsub(nvck,nvck)
-    integer, intent(out) :: nsub,ndeg
+    real(8), intent(in)  :: d(nvck),cutoff
+    integer, intent(out) :: degsub(nvck),nsub(nvck),ndeg
     ! local
-    integer :: i,m,n
-    real(8) :: delta,cutoff,first,last
-    integer :: idx(nvck)
-        
+    integer :: i,n
+    real(8) :: delta       
     
     !sort d  
-    call sortidx(nvck,d,idx) 
+    call sortidx(nvck,d,degsub) 
     
-    degsub = 0
+    nsub = 0 
+    nsub(1)=1
     ndeg = 1
-    nsub = 1 
-    m=1
-    n=1
-    
-    !the cutoff to determine the subsets
-    cutoff=maxdmmd
-    !cutoff=0.06d0
-    write(*,*) 'Cutoff: ',cutoff
-    
-    degsub(m,n)=idx(1)
-    
-    !create degsub, with indices of the degernerate subsets
-    do i = 1, nvck-1
+        
+    !create degsub, indices are grouped for each subset
+    !nsub contains the number of elements for each subset (nsub(1)=number of elements in first subset)
+    !ndeg contains the number of actual degenerate subsets
+    do i = 2, nvck
      
-     delta=abs(d(idx(i))**2-d(idx(i+1))**2)
+     delta=abs(d(degsub(i-1))**2-d(degsub(i))**2)
 
      if (delta<cutoff) then
-      
-      n=n+1
-      if (n>ndeg) ndeg=n
-      !cutoff=cutoff-delta
-      !last = d(idx(i+1))**2
-     
+      !add a new element to the subset
+      nsub(ndeg)=nsub(ndeg)+1
      else
-     
-      n=1
-      m=m+1
-      if (m>nsub) nsub=m
-      !first = d(idx(i+1))**2
-      !if (abs(first-last)>cutoff) write(*,*) 'the case', abs(first-last)
-      !cutoff=maxdmmd
-      
+      !create a new subset
+      ndeg=ndeg+1
+      nsub(ndeg)=1
      end if
     
-     degsub(m,n)=idx(i+1)
-    
     end do
-    
     
   end subroutine   
     
@@ -118,124 +100,122 @@ contains
 !---------------------------------------------------------------------------------------------------   
   
   ! applies 1st order degenerate perturbation theory
-  subroutine apply_pert_theory_1st(nvck,degsub,nsub,ndeg,d,dmmd,tvck)
+  subroutine apply_pert_theory_1st(nvck,degsub,nsub,ndeg,d,dmmd,tvck,maxdmmd)
     implicit none
-    integer,    intent(in)    :: nvck
-    integer,    intent(in)    :: degsub(nsub,ndeg)
+    integer,    intent(in)    :: nvck,ndeg
+    integer,    intent(in)    :: degsub(nvck),nsub(nvck)
     real(8),    intent(in)    :: d(nvck)
-    integer,    intent(in)    :: nsub,ndeg
     complex(8), intent(inout) :: dmmd(nvck,nvck)
     real(8),    intent(out)   :: tvck(nvck)
-    
+    real(8),    intent(out)   :: maxdmmd
+	
     !local
-    real(8),    allocatable :: alpha(:),delta
-    complex(8), allocatable :: beta(:,:) !, ap(:)
-    complex(8) :: U(nvck,nvck) 
-    integer :: i,j,n,m,l,kappa,nmax
+    real(8), allocatable :: alpha(:)
+    real(8) :: delta
+    complex(8) :: tmp
+    complex(8), allocatable :: beta(:,:)
+    !complex(8) :: U(nvck,nvck) 
+    integer :: x,nmax
+    integer :: i,j,m,n,l,p
 
+    x=0
+	maxdmmd=0.d0
     
-    U = 0.d0
-    kappa=0
-    
-    do m = 1, nsub
-
-     !count number of degeneracies
-     nmax = 0
-     do n = 1, ndeg
-      if (degsub(m,n)/=0) nmax = nmax+1
-     end do
-     write(*,*) 'subset dimension: ',nmax
+    do i=1,ndeg
+    !degsub(sum_i nsub(i-1):nsub(i)) is the current subset to consider
+    nmax=nsub(i)
+    if (nmax/=1) then !apply deg. pert. theory for degenerate subset 
      
-     kappa=kappa+nmax
+     allocate(beta(nmax,nmax))
+     allocate(alpha(nmax)) 
      
-     !degeneracy -------------------------------------------------------------------------- 
-     if (nmax>1) then
-     
-      !allocate(ap(nmax*(nmax+1)/2))
-      allocate(beta(nmax,nmax))
-      allocate(alpha(nmax)) 
-      
-      ! set up matrix for each degenerate subset in packed storage
-      do j = 1, nmax
-       do i = 1, j
-        beta(i,j) = dmmd( degsub(m,i), degsub(m,j) )
-        !ap(i+j*(j-1)/2) = dmmd( degsub(m,i), degsub(m,j) )
-       end do
-      end do 
-      
-      ! diagonalize
-      call mkl_zheev(nmax,beta,alpha)
-      !call mkl_zhpev(nmax,ap,beta,alpha)
-      
-      ! apply perturbation theory for degeneracy
-      do i = 1, nmax
-       
-       l = degsub(m,i)
-        
-       ! energies
-       tvck(l) = d(l)*d(l)+alpha(i)
-       
-       ! vectors 0th order
-       do j = 1, nmax
-        U(degsub(m,j),l) = U(degsub(m,j),l) + beta(j,i)
-       end do
-       
-       ! vectors 1st order
-       do j = 1, nvck
-        if ( ALL(degsub(m,:) /= j) ) then 
-        
-         do n = 1, nmax
-          U(j,l) = U(j,l) + dmmd(j,degsub(m,n))*beta(n,i)
-         end do
-         
-         delta = (d(l)-d(j))*d(l)-d(j)*(d(j)-d(l)) 
-         
-         U(j,l) = U(j,l) /delta
-         
-         if (abs(U(j,l))>1.d0) then
-          write(*,*) 'warning (deg): ',j,l,d(l),d(j),U(j,l)
-         end if
-        
-        end if
-       end do
-               
+     !assamble degenerate subset matrix
+     do m = 1, nmax
+      do n = 1, nmax
+       beta(m,n) = dmmd( degsub(x+m), degsub(x+n) )
       end do
+     end do 
+     
+     !diagonalize      
+     call mkl_zheev(nmax,beta,alpha)
+     
+     ! energies
+     do m=1,nmax
+      tvck(degsub(x+m)) = d(degsub(x+m))*d(degsub(x+m))+alpha(m)
+     end do
 
-      deallocate(beta,alpha)
-      !deallocate(ap)
-
-     else
-     !no degeneracies, apply normal perturbation theory------------------------------------------
-     
-     
-      l = degsub(m,1)
-     
-      ! energies
-      if (aimag(dmmd(l,l)) > 1.d-8) then
-       write(*,*) 'Warning: imaginary part of DMMD(i,i) not vanishing'
-      end if
-      
-      tvck(l) = d(l)*d(l)+real(dmmd(l,l))     
-     
-      ! vectors
-      do j = 1, nvck
-       if (l /= j) then
-          
-        delta =  (d(l)-d(j))*d(l)-d(j)*(d(j)-d(l)) 
-          
-        U(j,l) = dmmd(j,l)/delta
-        
-       else
-        U(j,l) = 1.d0
+     ! vectors 1st order
+     do m=1,nmax
+      l=degsub(x+m)
+      !do 1..x,x+nsub(ndeg)..nvck
+      do j=1,x
+       p=degsub(j)
+	   tmp=dmmd(p,l)*beta(m,m)
+	   dmmd(p,l)=0.d0
+       do n = 1, nmax
+        !U(p,l) = U(p,l) + dmmd(p,degsub(x+n))*beta(n,m)
+		dmmd(p,l) = dmmd(p,l) + dmmd(p,degsub(x+n))*beta(n,m)
+       end do
+	   dmmd(p,l)=dmmd(p,l)+tmp
+       delta = (d(l)-d(p))*d(l)-d(p)*(d(p)-d(l)) 
+       dmmd(p,l) = dmmd(p,l) /delta
+	   if (abs(dmmd(p,l))>maxdmmd) then
+	    maxdmmd=dmmd(p,l)
+	    !write(*,*) 'Warning: ',p,l,abs(U(p,l))
        end if
-      end do 
-      
-     end if
+      end do
+      do j=x+nmax+1,nvck
+       p=degsub(j)
+	   tmp=dmmd(p,l)*beta(m,m)
+	   dmmd(p,l)=0.d0	   
+       do n = 1, nmax
+        !U(p,l) = U(p,l) + dmmd(p,degsub(x+n))*beta(n,m)
+		dmmd(p,l) = dmmd(p,l) + dmmd(p,degsub(x+n))*beta(n,m)
+       end do
+	   dmmd(p,l)=dmmd(p,l)+tmp
+       delta = (d(l)-d(p))*d(l)-d(p)*(d(p)-d(l)) 
+       dmmd(p,l) = dmmd(p,l) /delta
+	   if (abs(dmmd(p,l))>maxdmmd) then
+	    maxdmmd=dmmd(p,l)
+	    !write(*,*) 'Warning: ',p,l,abs(U(p,l))
+       end if
+      end do
+      end do
      
-    end do
+     ! vectors 0th order
+     do m = 1, nmax
+      do n=1, nmax
+       !U(degsub(x+m),degsub(x+n)) = U(degsub(x+m),degsub(x+n)) + beta(m,n)
+	   dmmd(degsub(x+m),degsub(x+n)) =  beta(m,n)
+      end do
+     end do
+	 
+     deallocate(beta,alpha)
+    
+    else !apply normal pert. theory for non-degenerate subset 
      
-    write(*,*) kappa
-    dmmd(:,:)=U(:,:)
+     !get the index for the non-degenerate subset
+     l=degsub(x+1)
+     !energies
+     tvck(l) = d(l)*d(l)+real(dmmd(l,l))     
+     ! vectors
+     do j = 1, nvck
+      if (l /= j) then
+       delta =  (d(l)-d(j))*d(l)-d(j)*(d(j)-d(l)) 
+       dmmd(j,l) =  dmmd(j,l)/delta
+	   if (abs(dmmd(j,l))>maxdmmd) then
+	    maxdmmd=dmmd(j,l)
+       end if
+      else
+       dmmd(j,l) = 1.d0
+      end if
+     end do
+    
+    end if !
+    !count x
+    x=x+nmax
+    end do !ndeg
+    
 
   end subroutine   
   
