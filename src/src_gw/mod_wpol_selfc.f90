@@ -110,12 +110,12 @@ contains
       call setbarcev(input%gw%barecoul%barcevtol)
 
       ! Calculate W_{ij} in pole representation
-      call calc_md_dmmd(iq)
-      call diagonalize_dmmd(iq)
-      ! call calc_wmat()
-      ! call print_wmat(iq)
-      call delete_coulomb_potential
-      call clear_wpol()
+      ! call calc_md_dmmd(iq)
+      ! call diagonalize_dmmd(iq)
+      ! call delete_coulomb_potential
+      ! call clear_wpol()
+
+      call get_wpol(iq)
 
       ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega)
       call calc_selfc_wpol_q(iq)
@@ -129,7 +129,7 @@ contains
     end do ! q-points
 
 #ifdef MPI
-      call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
+    call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
 #endif
 
     ! print to file the results

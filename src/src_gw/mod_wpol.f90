@@ -119,49 +119,174 @@ contains
     return
   end subroutine
 
+
 !--------------------------------------------------------------------------------
-  subroutine set_wpol_indices()
+  subroutine task_wpol()
     implicit none
-    integer :: i, ik, n, m
+    integer :: iq
 
-    ! total number of states including the core ones
-    if (input%gw%coreflag=='all') then
-      ndim = nomax+ncg
-    else
-      ndim = nomax
+    !=================
+    ! Initialization
+    !=================
+    call init_gw
+    call clean_gndstate
+
+#ifdef MPI
+    call set_mpi_group(kqset%nkpt)
+    call mpi_set_range(nproc_row, &
+    &                  myrank_row, &
+    &                  kqset%nkpt, 1, &
+    &                  iqstart, iqend)
+    ! write(*,*) "myrank_row, iqstart, iqend =", myrank_row, iqstart, iqend
+#else
+    iqstart = 1
+    iqend = kqset%nkpt
+#endif
+
+    ! Setup working array dimensions and index mappings
+    call set_wpol_indices()
+
+    !===========================
+    ! Momentum matrix elements
+    !===========================
+    if (.not.input%gw%rpmat) call calcpmatgw()
+
+    !=========================
+    ! Main loop over q-points
+    !=========================
+
+    if (myrank==0) then
+      call boxmsg(fgw,'=','q-point cycle')
+      call flushifc(fgw)
     end if
-    mdim  = nstdf-numin+1
 
-    nvck0 = kqset%nkpt*ndim*mdim
+    ! each process does a subset
+    do iq = iqstart, iqend
 
-    ! map a -> {vck}
-    if (allocated(a2vck)) deallocate(a2vck)
-    allocate(a2vck(3,nvck0))
+      write(*,*)
+      write(*,*) '(mod_wpol::task_wpol) q-point cycle, iq = ', iq
+    
+      Gamma = gammapoint(kqset%vqc(:,iq))
 
-    ! map {vck} -> a
-    if (allocated(vck2a)) deallocate(vck2a)
-    allocate(vck2a(1:ndim,numin:nstdf,kqset%nkpt))
+      ! Calculate interstitial product basis functions
+      matsiz = locmatsiz+Gqset%ngk(1,iq)
+      call diagsgi(iq)
+      call calcmpwipw(iq)
+    
+      ! Calculate the bare Coulomb potential
+      call calcbarcmb(iq)
 
-    i = 0
-    do ik = 1, kqset%nkpt
-      do m = numin, nstdf
-      do n = 1, ndim
-        i = i+1
-        a2vck(1,i) = n
-        a2vck(2,i) = m
-        a2vck(3,i) = ik
-        vck2a(n,m,ik) = i
-      end do
-      end do
-    end do
+      ! set v-diagonal MB
+      call setbarcev(input%gw%barecoul%barcevtol)
+
+      ! Calculate W_{ij} in pole representation
+      call calc_md_dmmd(iq)
+      call diagonalize_dmmd(iq)
+
+      ! some clean up
+      call delete_coulomb_potential
+      call clear_wpol()
+
+      ! output poles data
+      call put_wpol(iq)
+
+      ! clean unused data
+      deallocate(tvck)
+      deallocate(wvck)
+      deallocate(mpwipw)
+      deallocate(barc)
+
+    end do ! q-points
+
+    ! delete index mapping arrays
+    call del_wpol_indices()
 
     return
+  end subroutine 
+
+!--------------------------------------------------------------------------------
+  subroutine put_wpol(iq)
+    use m_getunit
+    implicit none
+    integer,    intent(in) :: iq
+    integer       :: fid, i
+    integer(8)    :: recl
+    character(80) :: fname
+
+    ! store q-dependent data
+    call getunit(fid)
+
+    write(fname,'("TVCK-q",I4.4,".OUT")') iq
+    open(fid, File=trim(fname), Action='WRITE', Err=10)
+    write(fid,'("# ", i8)', Err=11) nvck
+    do i = 1, nvck
+      write(fid,'(i8, f16.6)', Err=11) i, tvck(i)
+    end do
+    close(fid)
+
+    write(fname,'("WVCK-q",I4.4,".OUT")') iq
+    inquire(IoLength=recl) mbdim, nvck, wvck(:,:)
+    open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
+    write(fid, Rec=1, Err=21) mbdim, nvck, wvck(:,:)
+    close(fid)
+
+    return
+
+10  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file TVCK-q.OUT for writing!'
+    stop
+11  write(*,*) 'ERROR(mod_wpol::put_wpol) Error writing data into TVCK-q.OUT!'
+    stop
+20  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file WVCK-q.OUT for writing!'
+    stop
+21  write(*,*) 'ERROR(mod_wpol::put_wpol) Error writing data into WVCK-q.OUT!'
+    stop
+
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine del_wpol_indices()
-    if (allocated(a2vck)) deallocate(a2vck)
-    if (allocated(vck2a)) deallocate(vck2a)
+  subroutine get_wpol(iq)
+    use m_getunit
+    implicit none
+    integer,    intent(in) :: iq
+    integer       :: fid, i, j
+    integer(8)    :: recl
+    character(80) :: fname, string
+
+    ! store q-dependent data
+    call getunit(fid)
+
+    write(fname,'("TVCK-q",I4.4,".OUT")') iq
+    open(fid, File=trim(fname), Action='READ', Err=10)
+    read(fid,*) string, nvck
+    
+    if (allocated(tvck)) deallocate(tvck)
+    allocate(tvck(nvck))
+    do i = 1, nvck
+      read(fid,*) j, tvck(i)
+    end do
+    close(fid)
+
+    write(fname,'("WVCK-q",I4.4,".OUT")') iq
+    inquire(IoLength=recl) mbdim, nvck
+    open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
+    read(fid, Rec=1) mbdim, nvck
+    close(fid)  
+
+    if (allocated(wvck)) deallocate(wvck)
+    allocate(wvck(mbdim,nvck))
+
+    inquire(IoLength=recl) mbdim, nvck, wvck(:,:)
+    open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
+    read(fid, Rec=1) mbdim, nvck, wvck(:,:)
+    close(fid)
+
+    return
+
+10  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file TVCK-q.OUT for reading!'
+    stop
+20  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file WVCK-q.OUT for reading!'
+    stop
+
   end subroutine
 
 !--------------------------------------------------------------------------------
@@ -620,6 +745,51 @@ contains
 
     return
   end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine set_wpol_indices()
+    implicit none
+    integer :: i, ik, n, m
+
+    ! total number of states including the core ones
+    if (input%gw%coreflag=='all') then
+      ndim = nomax+ncg
+    else
+      ndim = nomax
+    end if
+    mdim  = nstdf-numin+1
+
+    nvck0 = kqset%nkpt*ndim*mdim
+
+    ! map a -> {vck}
+    if (allocated(a2vck)) deallocate(a2vck)
+    allocate(a2vck(3,nvck0))
+
+    ! map {vck} -> a
+    if (allocated(vck2a)) deallocate(vck2a)
+    allocate(vck2a(1:ndim,numin:nstdf,kqset%nkpt))
+
+    i = 0
+    do ik = 1, kqset%nkpt
+      do m = numin, nstdf
+      do n = 1, ndim
+        i = i+1
+        a2vck(1,i) = n
+        a2vck(2,i) = m
+        a2vck(3,i) = ik
+        vck2a(n,m,ik) = i
+      end do
+      end do
+    end do
+
+    return
+  end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine del_wpol_indices()
+    if (allocated(a2vck)) deallocate(a2vck)
+    if (allocated(vck2a)) deallocate(vck2a)
+  end subroutine  
 
 !--------------------------------------------------------------------------------
   subroutine clear_wpol()
