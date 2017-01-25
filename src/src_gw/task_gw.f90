@@ -306,7 +306,6 @@ subroutine task_gw()
       
       ! KS band structure
       evalks(ibgw:nbgw,:) = evalsv(ibgw:nbgw,:) 
-      !call bandanalysis('KS',ibgw,nbgw,evalks(ibgw:nbgw,:),efermi)
       call bandstructure_analysis('KS', &
       &  ibgw,nbgw,kset%nkpt,evalks(ibgw:nbgw,:),efermi)
       
@@ -327,19 +326,16 @@ subroutine task_gw()
       select case (input%gw%taskname)
       
         case('g0w0_x')
-          !call bandanalysis('G0W0_X',ibgw,nbgw,evalqp(ibgw:nbgw,:),eferqp)
-          call bandstructure_analysis('G0W0_X', &
-          &  ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
+          ! call bandstructure_analysis('G0W0_X',ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
+          call bandstructure_info('G0W0_X',ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
       
         case('cohsex')
-          !call bandanalysis('COHSEX',ibgw,nbgw,evalqp(ibgw:nbgw,:),eferqp)
-          call bandstructure_analysis('COHSEX', &
-          &  ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
+          ! call bandstructure_analysis('COHSEX',ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
+          call bandstructure_info('G0W0_X',ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
           
         case('g0w0','gw0')
-          !call bandanalysis('G0W0',ibgw,nbgw,evalqp(ibgw:nbgw,:),eferqp)
-          call bandstructure_analysis('G0W0', &
-          &  ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
+          ! call bandstructure_analysis('G0W0',ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
+          call bandstructure_info('G0W0_X',ibgw,nbgw,kset%nkpt,evalqp(ibgw:nbgw,:),eferqp)
           
       end select
       

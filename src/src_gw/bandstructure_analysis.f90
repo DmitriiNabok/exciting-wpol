@@ -14,12 +14,7 @@ subroutine bandstructure_analysis(title,ib,nb,nkpt,eband,efermi)
     real(8) :: fermidos
 
     real(8), external :: dostet_exciting
-
-    integer :: n, i, ik
-    real(8), allocatable :: sband(:,:)
-    integer, allocatable :: idx(:,:)
-
-    
+   
     if (rank==0) then
       call boxmsg(fgw,'-',trim(title))
       write(fgw,'(a,f10.4)') " Fermi energy: ", efermi
@@ -41,36 +36,12 @@ subroutine bandstructure_analysis(title,ib,nb,nkpt,eband,efermi)
     !----------------------------------------
     ! Search for the indices of VBM and CBM 
     !----------------------------------------
-
-    ! NB: old version (unsorted) has a bug for QP values when band swapping takes place
-    ! call find_vbm_cbm(ib,nb,nkpt,eband,efermi,nomax,numin,ikvbm,ikcbm,ikvcm)
-    ! if (rank==0) then
-    !   write(fgw,'(a,i4)') " Band index of VBM:", nomax
-    !   write(fgw,'(a,i4)') " Band index of CBM:", numin
-    !   write(fgw,*)
-    ! end if
-
-    ! sort band energies in the ascending order
-    n = nb-ib+1
-    allocate(sband(n,nkpt))
-    allocate(idx(n,nkpt))
-    do ik = 1, nkpt
-      call sortidx(n, eband(ib:nb,ik), idx(:,ik))
-      do i = 1, n
-        sband(i,ik) = eband(ib-1+idx(i,ik),ik)
-      end do
-    end do
-
-    call find_vbm_cbm(1,n,nkpt,sband,efermi,nomax,numin,ikvbm,ikcbm,ikvcm)
-    nomax = idx(nomax,ikvbm)+ib-1
-    numin = idx(numin,ikcbm)+ib-1
+    call find_vbm_cbm(ib,nb,nkpt,eband,efermi,nomax,numin,ikvbm,ikcbm,ikvcm)
     if (rank==0) then
       write(fgw,'(a,i4)') " Band index of VBM:", nomax
       write(fgw,'(a,i4)') " Band index of CBM:", numin
       write(fgw,*)
     end if
-    deallocate(idx)
-    deallocate(sband)
     
     ! Calculate DOS at the fermi level
     fermidos = dostet_exciting(nb-ib+1,nkpt,eband, &
@@ -78,7 +49,7 @@ subroutine bandstructure_analysis(title,ib,nb,nkpt,eband,efermi)
     &                          efermi)
     
     ! check for VBM and CBM overlap (metal)
-    if ((nomax >= numin).or.(dabs(fermidos)>1.d-4)) then
+    if ((nomax >= numin).or.(abs(fermidos)>1.d-4)) then
         metallic = .true.
     else
         metallic = .false.
