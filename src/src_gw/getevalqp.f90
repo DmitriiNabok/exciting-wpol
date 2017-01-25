@@ -4,7 +4,7 @@ subroutine getevalqp(nkp2,kvecs2,eqp2)
   use modinput
   use modmain
   use modgw,          only : ibgw, nbgw, nkp1, kvecs1, eks1, eqp1
-  use mod_selfenergy, only : eferqp
+  use mod_selfenergy, only : eferks, eferqp
 
   implicit none
       
@@ -15,7 +15,6 @@ subroutine getevalqp(nkp2,kvecs2,eqp2)
   logical       :: exist
   integer(4)    :: ik, ib, nb, nk, nqp
   integer(4)    :: recl
-  real(8)       :: eferks
   character(30) :: fname
   integer(4), allocatable :: idx(:)
   real(8),    allocatable :: eqp(:)

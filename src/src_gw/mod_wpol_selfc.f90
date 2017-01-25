@@ -110,12 +110,12 @@ contains
       call setbarcev(input%gw%barecoul%barcevtol)
 
       ! Calculate W_{ij} in pole representation
-      call calc_md_dmmd(iq)
-      call diagonalize_dmmd(iq)
-      ! call calc_wmat()
-      ! call print_wmat(iq)
-      call delete_coulomb_potential
-      call clear_wpol()
+      ! call calc_md_dmmd(iq)
+      ! call diagonalize_dmmd(iq)
+      ! call delete_coulomb_potential
+      ! call clear_wpol()
+
+      call get_wpol(iq)
 
       ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega)
       call calc_selfc_wpol_q(iq)
@@ -123,14 +123,13 @@ contains
       ! clean unused data
       deallocate(tvck)
       deallocate(wvck)
-      if (Gamma) deallocate(wvck0)
       deallocate(mpwipw)
       deallocate(barc)
 
     end do ! q-points
 
 #ifdef MPI
-      call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
+    call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
 #endif
 
     ! print to file the results
@@ -207,10 +206,6 @@ contains
 #endif
 
         if (Gamma) then
-#ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,sigma1,sigma2)
-!$OMP DO
-#endif          
           ! loop over frequencies
           do iom = 1, freq%nomeg
             call sum_singular(n,jkp,iom,mw,sigma1,sigma2)
@@ -218,10 +213,6 @@ contains
             &                  coefs1*sigma1   + &
             &                  coefs2*sigma2
           end do
-#ifdef USEOMP
-!$OMP END DO
-!$OMP END PARALLEL
-#endif
         end if
 
       end do ! n
@@ -265,12 +256,17 @@ contains
       modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
       q0eps(:) = q0eps(:)/modq0
 
+#ifdef USEOMP
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(i,zt1,zt2)
+!$omp do reduction (+:sigma1,sigma2)
+#endif
       do i = 1, nvck
+        !------------------
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
-        zt1 = 0.5d0 / zt1
-        zt2 = wvck0(i,1)*q0eps(1)+ &
-        &     wvck0(i,2)*q0eps(2)+ &
-        &     wvck0(i,3)*q0eps(3)
+        zt1 = 0.5d0 / zt1        
+        zt2 = wvck(mbsiz+1,i)
         !---------------------------------------------------
         ! contribution from the first term: 1/q^2
         sigma2 = sigma2 + zt1 * zt2*conjg(zt2)
@@ -278,17 +274,27 @@ contains
         ! contribution from the second+third term: 1/q
         sigma1 = sigma1 + zt1 * ( zt2*conjg(mw(n,i)) + conjg(zt2)*mw(n,i) )
       end do
+#ifdef USEOMP
+!$omp end do
+!$omp end parallel
+#endif      
 
     case('sphavrg')
 
       c1 = sqrt(1.d0/3.d0)
       c2 = sqrt(1.d0/6.d0)
+#ifdef USEOMP
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(i,zt1,p,zt2)
+!$omp do reduction (+:sigma1,sigma2)
+#endif
       do i = 1, nvck
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
-        p(1) = c2*(zi*wvck0(i,2)+wvck0(i,1))
-        p(2) = c1*wvck0(i,3)
-        p(3) = c2*(zi*wvck0(i,2)-wvck0(i,1))
+        p(1) = c2*(zi*wvck(mbsiz+2,i)+wvck(mbsiz+1,i))
+        p(2) = c1*wvck(mbsiz+3,i)
+        p(3) = c2*(zi*wvck(mbsiz+2,i)-wvck(mbsiz+1,i))
         zt2 = ( p(1)*conjg(p(1))+ &
         &       p(2)*conjg(p(2))+ &
         &       p(3)*conjg(p(3)) )
@@ -299,6 +305,10 @@ contains
         ! There is no contribution from the second+third term: 1/q
         sigma1 = zzero
       end do
+#ifdef USEOMP
+!$omp end do
+!$omp end parallel
+#endif
 
     case default
       write(*,*) "ERROR(mod_wpol_selfc::sum_singular): Unknown averaging type!"
@@ -333,8 +343,6 @@ contains
       enk = evalsv(m,jkp)
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
-        !------------------
-        ! complex version
         !------------------
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-m)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1

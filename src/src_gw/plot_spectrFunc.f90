@@ -12,7 +12,7 @@ subroutine plot_spectrFunc()
   integer :: fid1, fid2, fid3, fid4, fid5, fid6, fid7
   integer :: n, iom, ik, ib
   character(30) :: frmt
-  real(8),    allocatable :: enk(:), sf(:), sfunc(:,:,:)
+  real(8),    allocatable :: enk(:), sf(:), sfunc(:,:,:), sftot(:)
   real(8),    allocatable :: ynk(:), sfd(:)
   complex(8), allocatable :: sx(:), sc(:), vxc(:)
   real(8)    :: scr, sci, om, om1, dE, eta, t1
@@ -71,6 +71,7 @@ if (rank == 0) then
   write(*,*) 'nomax, ikvbm, dE = ', nomax, ikvbm, dE
 
   do ik = 1, kset%nkpt
+
     write(fid1,'(a,3f16.8,4x,f16.8)') '# k-point: ', kset%vkl(:,ik), kset%wkpt(ik)
     do iom = 1, freq%nomeg
       om  = freq%freqs(iom)
@@ -106,7 +107,7 @@ if (rank == 0) then
       end do
       write(fid7,trim(frmt)) om1, sfd
 
-    end do
+    end do ! iom
     write(fid1,*); write(fid1,*)
     write(fid2,*); write(fid2,*)
     write(fid3,*); write(fid3,*)
@@ -115,7 +116,7 @@ if (rank == 0) then
     write(fid6,*); write(fid6,*)
     write(fid7,*); write(fid7,*)
     
-  end do
+  end do ! ik
 
   deallocate(enk,sf)
   deallocate(sx,sc,vxc)
@@ -128,6 +129,22 @@ if (rank == 0) then
   close(fid5)
   close(fid6)
   close(fid7)
+
+  !-------------------------
+  ! Total spectral function
+  !-------------------------
+  allocate(sftot(freq%nomeg))
+  sftot(:) = 0.d0
+  do iom = 1, freq%nomeg
+    do ik = 1, kset%nkpt
+      sftot(iom) = sftot(iom) + kset%wkpt(ik)*sum(sfunc(ibgw:nbgw,iom,ik))
+    end do
+  end do
+  open(fid1,file='SF-tot.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  do iom = 1, freq%nomeg
+    write(fid1,'(2f18.8)') freq%freqs(iom)-efermi, sftot(iom)
+  end do
+  close(fid1)
 
   !--------------------
   ! Gaussian smearing
@@ -146,9 +163,17 @@ if (rank == 0) then
     end do
     write(fid1,*); write(fid1,*)
   end do
-  close(fid1)
-  deallocate(sfunc)
+  close(fid1)  
 
+  open(fid1,file='SF-tot-G.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+  call apply_Gaussian_smearing(freq%nomeg, freq%freqs, sftot, eta)
+  do iom = 1, freq%nomeg
+    write(fid1,trim(frmt)) freq%freqs(iom)-efermi, sftot(iom)
+  end do
+  close(fid1)
+
+  deallocate(sfunc)
+  deallocate(sftot)
 
 end if ! rank == 0
 
@@ -164,18 +189,22 @@ contains
     real(8), intent(in)    :: eta
     integer :: i, j
     real(8) :: s
-    real(8) :: z(n)
+    real(8) :: z(n), w(n)
 
     ! eta = FWHM = 2 sqrt(2ln2) s
     s = eta / 2.35482
 
     do i = 1, n
       z(i) = 0.d0
+      w(i) = 0.d0
       do j = 1, n
         z(i) = z(i) + y(j) * gaussian(x(i), x(j), s)
+        w(i) = w(i) + gaussian(x(i), x(j), s)
       end do
+      ! z(i) = z(i) / dble(n)
+      z(i) = z(i) / w(i)
     end do
-    y = 2.0d0 * z / dble(n)
+    y = z
 
   end subroutine
 
@@ -183,8 +212,10 @@ contains
     real(8), intent(in) :: x
     real(8), intent(in) :: m
     real(8), intent(in) :: s
+    
     gaussian = exp(-(x-m)**2/(2.d0*s**2)) / sqrt(2.d0*pi*s**2)
     ! gaussian = exp(-(x-m)**2/(2.d0*s**2))
+    
     return
   end function
 

@@ -5,7 +5,7 @@ subroutine plot_selfenergy()
     use modmain
     use modgw
     use mod_selfenergy, only : evalks, evalqp, selfex, selfec, iopac, &
-    &                          init_selfenergy, delete_selfenergy
+    &                          init_selfenergy, delete_selfenergy, eferks
     use mod_vxc,        only : vxcnn, read_vxcnn
     use mod_frequency
     use mod_hdf5
@@ -28,7 +28,7 @@ subroutine plot_selfenergy()
     complex(8), allocatable :: zx(:), zy(:)
     complex(8), allocatable :: a(:), sc(:), scw(:), poles(:)
     complex(8), allocatable :: selfc(:,:,:)
-    real(8),    allocatable :: spectr(:,:,:)
+    real(8),    allocatable :: spectr(:,:,:), sftot(:)
     
     complex(8), allocatable :: p(:,:)
 
@@ -129,8 +129,9 @@ subroutine plot_selfenergy()
     do ik = 1, kset%nkpt
       do ie = ibgw, nbgw
 
-        ! enk = evalks(ie,ik)-eferks
+        enk = evalks(ie,ik)-eferks
         ! enk = evalqp(ie,ik)-eferqp
+        
         do iom = 1, freq%nomeg
           zy(iom) = selfec(ie,iom,ik)
         end do
@@ -145,15 +146,26 @@ subroutine plot_selfenergy()
               !----------------
               ! real frequency
               !----------------
-              call padecof(freq%nomeg,zx,zy,n,p)
+              ! call padecof(freq%nomeg,zx,zy,n,p)
+              ! do iom = 1, nom
+              !   ein = cmplx(om(iom),eta,8)
+              !   call gpade(freq%nomeg,zx,n,p,ein,sigma)
+              !   if (om(iom)<0.d0) then
+              !     selfc(ie,iom,ik) = conjg(sigma)
+              !   else
+              !     selfc(ie,iom,ik) = sigma
+              !   end if
+              ! end do
+
+              call setsac(iopac, freq%nomeg, npar, &
+              &           enk, selfec(ie,:,ik), &
+              &           freq%freqs, a, poles)
               do iom = 1, nom
-                ein = cmplx(om(iom),eta,8)
-                call gpade(freq%nomeg,zx,n,p,ein,sigma)
-                if (om(iom)<0.d0) then
-                  selfc(ie,iom,ik) = conjg(sigma)
-                else
-                  selfc(ie,iom,ik) = sigma
-                end if
+                ein = cmplx(om(iom)-eferks,eta,8)
+                call getsac(iopac, freq%nomeg, npar, &
+                &           enk, ein, freq%freqs, &
+                &           a, sigma, dsig)
+                selfc(ie,iom,ik) = sigma
               end do
                         
             case('imag')
@@ -186,15 +198,26 @@ subroutine plot_selfenergy()
               !----------------
               ! real frequency
               !----------------
-              call setsac(iopac,freq%nomeg,npar,1.d0,selfec(ie,:,ik),freq%freqs,a,poles)
+              ! call setsac(iopac,freq%nomeg,npar,1.d0,selfec(ie,:,ik),freq%freqs,a,poles)
+              ! do iom = 1, nom
+              !   ein = cmplx(om(iom),eta,8)
+              !   call getsac(iopac,nom,npar,1.d0,ein,om,a,sigma,dsig)
+              !   if (om(iom)<0.d0) then
+              !     selfc(ie,iom,ik) = conjg(sigma)
+              !   else
+              !     selfc(ie,iom,ik) = sigma
+              !   end if
+              ! end do
+
+              call setsac(iopac, freq%nomeg, npar, &
+              &           enk, selfec(ie,:,ik), &
+              &           freq%freqs, a, poles)
               do iom = 1, nom
-                ein = cmplx(om(iom),eta,8)
-                call getsac(iopac,nom,npar,1.d0,ein,om,a,sigma,dsig)
-                if (om(iom)<0.d0) then
-                  selfc(ie,iom,ik) = conjg(sigma)
-                else
-                  selfc(ie,iom,ik) = sigma
-                end if
+                ein = cmplx(om(iom)-eferks,0.d0,8)
+                call getsac(iopac, freq%nomeg, npar, &
+                &           enk, ein, freq%freqs, &
+                &           a, sigma, dsig)
+                selfc(ie,iom,ik) = sigma
               end do
                     
             case('imag')
@@ -246,8 +269,8 @@ subroutine plot_selfenergy()
     ! end do
     !---------
     
-    ik = 1
-    kset%nkpt = 1
+    ! ik = 1
+    ! kset%nkpt = 1
 
     n = nbgw-ibgw+1
     write(frmt1,'("(",i8,"f14.6)")') 1+2*n
@@ -261,7 +284,9 @@ subroutine plot_selfenergy()
     open(75,file='SelfXC.dat',form='FORMATTED',status='UNKNOWN',action='WRITE')
     open(76,file='SpectralFunction.dat',form='FORMATTED',status='UNKNOWN',action='WRITE')
     open(77,file='GF.dat',form='FORMATTED',status='UNKNOWN',action='WRITE')
+    
     allocate(tvec(ibgw:nbgw),zvec(ibgw:nbgw))
+
     do ik = 1, kset%nkpt
       write(74,*) '# ik = ', ik
       write(75,*) '# ik = ', ik
@@ -282,16 +307,34 @@ subroutine plot_selfenergy()
         ! Denominator
         write(77,trim(frmt2)) om(iom), tvec 
       end do
-      write(74,*)
-      write(75,*)
-      write(76,*)
-      write(77,*)
+      write(74,*); write(74,*)
+      write(75,*); write(75,*)
+      write(76,*); write(76,*)
+      write(77,*); write(77,*)
     end do
     deallocate(tvec,zvec)
     close(74)
     close(75)
     close(76)
     close(77)
+
+
+    !-------------------------
+    ! Total spectral function
+    !-------------------------
+    allocate(sftot(nom))
+    sftot(:) = 0.d0
+    do iom = 1, nom
+      do ik = 1, kset%nkpt
+        sftot(iom) = sftot(iom) + kset%wkpt(ik)*sum(spectr(ibgw:nbgw,iom,ik))
+      end do
+    end do
+    open(76,file='SF-tot.DAT',form='FORMATTED',status='UNKNOWN',action='WRITE')
+    do iom = 1, nom
+      write(76,'(2f18.8)') om(iom)-efermi, sftot(iom)
+    end do
+    close(76)
+    deallocate(sftot)
     
     ! clear memory
     deallocate(om)

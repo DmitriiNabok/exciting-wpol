@@ -90,6 +90,9 @@ subroutine init_gw()
         ! restore the initial value
         input%groundstate%reducek = reducek_
         filext = trim(filext_save)
+
+        ! To check if it does allow to skip this step in <gwplan> sequence
+        input%gw%skipgnd = .true.
         
     end if
     

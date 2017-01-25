@@ -8,7 +8,7 @@ module mod_wpol
   implicit none
   
   integer, private :: ndim, mdim
-  integer, public  :: nvck, nvck0
+  integer, public  :: nvck, nvck0, mbdim
 
   ! index mapping array
   integer,    allocatable :: a2vck(:,:)
@@ -19,11 +19,10 @@ module mod_wpol
   real(8),    allocatable :: tvck(:)
   complex(8), allocatable :: wvck(:,:)
   complex(8), allocatable :: wvck0(:,:)
-  public :: tvck, wvck, wvck0
+  public :: tvck, wvck
 
   real(8),    allocatable :: d(:)
   complex(8), allocatable :: md(:,:)
-  complex(8), allocatable :: pm(:,:)
   complex(8), allocatable :: dmmd(:,:)
   complex(8), allocatable :: wij(:,:,:)
   private :: d, md, dmmd, wij
@@ -120,49 +119,174 @@ contains
     return
   end subroutine
 
+
 !--------------------------------------------------------------------------------
-  subroutine set_wpol_indices()
+  subroutine task_wpol()
     implicit none
-    integer :: i, ik, n, m
+    integer :: iq
 
-    ! total number of states including the core ones
-    if (input%gw%coreflag=='all') then
-      ndim = nomax+ncg
-    else
-      ndim = nomax
+    !=================
+    ! Initialization
+    !=================
+    call init_gw
+    call clean_gndstate
+
+#ifdef MPI
+    call set_mpi_group(kqset%nkpt)
+    call mpi_set_range(nproc_row, &
+    &                  myrank_row, &
+    &                  kqset%nkpt, 1, &
+    &                  iqstart, iqend)
+    ! write(*,*) "myrank_row, iqstart, iqend =", myrank_row, iqstart, iqend
+#else
+    iqstart = 1
+    iqend = kqset%nkpt
+#endif
+
+    ! Setup working array dimensions and index mappings
+    call set_wpol_indices()
+
+    !===========================
+    ! Momentum matrix elements
+    !===========================
+    if (.not.input%gw%rpmat) call calcpmatgw()
+
+    !=========================
+    ! Main loop over q-points
+    !=========================
+
+    if (myrank==0) then
+      call boxmsg(fgw,'=','q-point cycle')
+      call flushifc(fgw)
     end if
-    mdim  = nstdf-numin+1
 
-    nvck0 = kqset%nkpt*ndim*mdim
+    ! each process does a subset
+    do iq = iqstart, iqend
 
-    ! map a -> {vck}
-    if (allocated(a2vck)) deallocate(a2vck)
-    allocate(a2vck(3,nvck0))
+      write(*,*)
+      write(*,*) '(mod_wpol::task_wpol) q-point cycle, iq = ', iq
+    
+      Gamma = gammapoint(kqset%vqc(:,iq))
 
-    ! map {vck} -> a
-    if (allocated(vck2a)) deallocate(vck2a)
-    allocate(vck2a(1:ndim,numin:nstdf,kqset%nkpt))
+      ! Calculate interstitial product basis functions
+      matsiz = locmatsiz+Gqset%ngk(1,iq)
+      call diagsgi(iq)
+      call calcmpwipw(iq)
+    
+      ! Calculate the bare Coulomb potential
+      call calcbarcmb(iq)
 
-    i = 0
-    do ik = 1, kqset%nkpt
-      do m = numin, nstdf
-      do n = 1, ndim
-        i = i+1
-        a2vck(1,i) = n
-        a2vck(2,i) = m
-        a2vck(3,i) = ik
-        vck2a(n,m,ik) = i
-      end do
-      end do
-    end do
+      ! set v-diagonal MB
+      call setbarcev(input%gw%barecoul%barcevtol)
+
+      ! Calculate W_{ij} in pole representation
+      call calc_md_dmmd(iq)
+      call diagonalize_dmmd(iq)
+
+      ! some clean up
+      call delete_coulomb_potential
+      call clear_wpol()
+
+      ! output poles data
+      call put_wpol(iq)
+
+      ! clean unused data
+      deallocate(tvck)
+      deallocate(wvck)
+      deallocate(mpwipw)
+      deallocate(barc)
+
+    end do ! q-points
+
+    ! delete index mapping arrays
+    call del_wpol_indices()
 
     return
+  end subroutine 
+
+!--------------------------------------------------------------------------------
+  subroutine put_wpol(iq)
+    use m_getunit
+    implicit none
+    integer,    intent(in) :: iq
+    integer       :: fid, i
+    integer(8)    :: recl
+    character(80) :: fname
+
+    ! store q-dependent data
+    call getunit(fid)
+
+    write(fname,'("TVCK-q",I4.4,".OUT")') iq
+    open(fid, File=trim(fname), Action='WRITE', Err=10)
+    write(fid,'("# ", i8)', Err=11) nvck
+    do i = 1, nvck
+      write(fid,'(i8, f16.6)', Err=11) i, tvck(i)
+    end do
+    close(fid)
+
+    write(fname,'("WVCK-q",I4.4,".OUT")') iq
+    inquire(IoLength=recl) mbdim, nvck, wvck(:,:)
+    open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
+    write(fid, Rec=1, Err=21) mbdim, nvck, wvck(:,:)
+    close(fid)
+
+    return
+
+10  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file TVCK-q.OUT for writing!'
+    stop
+11  write(*,*) 'ERROR(mod_wpol::put_wpol) Error writing data into TVCK-q.OUT!'
+    stop
+20  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file WVCK-q.OUT for writing!'
+    stop
+21  write(*,*) 'ERROR(mod_wpol::put_wpol) Error writing data into WVCK-q.OUT!'
+    stop
+
   end subroutine
 
 !--------------------------------------------------------------------------------
-  subroutine del_wpol_indices()
-    if (allocated(a2vck)) deallocate(a2vck)
-    if (allocated(vck2a)) deallocate(vck2a)
+  subroutine get_wpol(iq)
+    use m_getunit
+    implicit none
+    integer,    intent(in) :: iq
+    integer       :: fid, i, j
+    integer(8)    :: recl
+    character(80) :: fname, string
+
+    ! store q-dependent data
+    call getunit(fid)
+
+    write(fname,'("TVCK-q",I4.4,".OUT")') iq
+    open(fid, File=trim(fname), Action='READ', Err=10)
+    read(fid,*) string, nvck
+    
+    if (allocated(tvck)) deallocate(tvck)
+    allocate(tvck(nvck))
+    do i = 1, nvck
+      read(fid,*) j, tvck(i)
+    end do
+    close(fid)
+
+    write(fname,'("WVCK-q",I4.4,".OUT")') iq
+    inquire(IoLength=recl) mbdim, nvck
+    open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
+    read(fid, Rec=1) mbdim, nvck
+    close(fid)  
+
+    if (allocated(wvck)) deallocate(wvck)
+    allocate(wvck(mbdim,nvck))
+
+    inquire(IoLength=recl) mbdim, nvck, wvck(:,:)
+    open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
+    read(fid, Rec=1) mbdim, nvck, wvck(:,:)
+    close(fid)
+
+    return
+
+10  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file TVCK-q.OUT for reading!'
+    stop
+20  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file WVCK-q.OUT for reading!'
+    stop
+
   end subroutine
 
 !--------------------------------------------------------------------------------
@@ -179,6 +303,7 @@ contains
     complex(8) :: zt1, wkp
     complex(8), allocatable :: evecsv(:,:,:)
 
+    mbdim = mbsiz
     if (Gamma) then      
       ! val-val
       if (allocated(pmatvv)) deallocate(pmatvv)
@@ -196,14 +321,22 @@ contains
         &    Action='READ',Form='UNFORMATTED', &
         &    Access='DIRECT',Status='OLD',Recl=recl)
       end if
-      allocate(pm(nvck0,3))
-      pm(:,:) = 0.d0
+      !
+      select case(input%gw%scrcoul%sciavtype)
+      case('isotropic')
+        mbdim = mbsiz+1
+      case('sphavrg')
+        mbdim = mbsiz+3
+      case default
+        write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
+        stop
+      end select  
     end if
 
     ! global arrays
     allocate(d(nvck0))
     d(:) = 0.d0
-    allocate(md(mbsiz,nvck0))
+    allocate(md(mbdim,nvck0))
     md(:,:) = 0.d0  
 
     ! local data
@@ -251,7 +384,7 @@ contains
         i = vck2a(n,m,ik)
         if (n <= nomax) then
           de = evalsv(m,jkp)-evalsv(n,ikp)
-          if (Gamma) pm(i,:) = prefac * pmatvv(n,m,:) / sqrt(de)
+          if (Gamma) call q0_treatment_setup(i,prefac/sqrt(de),pmatvv(n,m,:))
         else
           icg = n-nomax
           is  = corind(icg,1)
@@ -259,7 +392,7 @@ contains
           ic  = corind(icg,3)
           ias = idxas(ia,is)
           de  = evalsv(m,jkp)-evalcr(ic,ias)
-          if (Gamma) pm(i,:) = prefac * pmatcv(icg,m,:) / sqrt(de)
+          if (Gamma) call q0_treatment_setup(i,prefac/sqrt(de),pmatcv(icg,m,:))
         end if
         if (abs(de) < 1.d-6) then
           write(*,*) "WARNING(mod_wpol::calc_md_dmmd) Near degenerate eigenvalues ", n, m
@@ -295,6 +428,57 @@ contains
     return
   end subroutine
 
+
+!--------------------------------------------------------------------------------
+  subroutine q0_treatment_setup(i,prefac,p)
+    use modinput
+    use modmain, only : pi, zi
+    implicit none
+    ! inpout
+    integer,    intent(in) :: i
+    real(8),    intent(in) :: prefac
+    complex(8), intent(in) :: p(3)
+    ! local
+    real(8) :: c1, c2
+    real(8) :: q0eps(3), modq0
+
+    ! singular term: v^{1/2} M^{0} D^{1/2}
+
+    select case(input%gw%scrcoul%sciavtype)
+    case('isotropic')
+
+      ! q->0 direction
+      q0eps(:) = input%gw%scrcoul%q0eps(:)
+      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
+      q0eps(:) = q0eps(:)/modq0
+
+      md(mbsiz+1,i) = -prefac * ( p(1)*q0eps(1)+ &
+      &                           p(2)*q0eps(2)+ &
+      &                           p(3)*q0eps(3) )
+
+    case('sphavrg')
+
+      ! c1 = sqrt(4.d0*pi/3.d0)
+      ! c2 = sqrt(2.d0*pi/3.d0)
+      c1 = 1.d0
+      c2 = sqrt(0.5d0)
+      ! c1 = sqrt(1.d0/3.d0)
+      ! c2 = sqrt(1.d0/6.d0)
+
+      md(mbsiz+1,i) = -prefac * c2*(zi*p(2)+p(1))
+      md(mbsiz+2,i) = -prefac * c1*p(3)
+      md(mbsiz+3,i) = -prefac * c2*(zi*p(2)-p(1))
+
+    case default
+      write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
+      stop
+
+    end select
+
+    return
+  end subroutine
+
+
 !--------------------------------------------------------------------------------
   subroutine diagonalize_dmmd(iq)
     use mod_wpol_pert
@@ -313,7 +497,7 @@ contains
     write(*,*) '    Matrix size: ', nvck0
 
     if (.not.associated(input%gw%eigensolver)) &
-    & input%gw%eigensolver => getstructeigensolver(emptynode)
+    &  input%gw%eigensolver => getstructeigensolver(emptynode)
    
     select case (input%gw%eigensolver%method)
 
@@ -324,26 +508,23 @@ contains
         write(*,*) '    (test) First-order perturbation theory'
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
-        call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
-        &           zone, md, mbsiz, md, mbsiz,  &
+        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+        &           zone, md, mbdim, md, mbdim,  &
         &           zzero, dmmd, nvck)
         if (Gamma) call add_q0_contribution()
+        ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
+        do i = 1, nvck
+          dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
+        end do
         !cutoff = input%gw%eigensolver%cutoff
 		    cutoff=maxval(abs(dmmd))
         allocate(tvck(nvck))
         call wpol_pert(nvck,d,dmmd,tvck,cutoff)
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-        &           zone, md, mbsiz, dmmd, nvck, &
-        &           zzero, wvck, mbsiz)
-		    if (Gamma) then
-          ! Eq. (2.38) i=0, n/=n' term
-          allocate(wvck0(nvck,3))
-          call zgemm( 't', 'n', nvck, 3, nvck0, &
-          &           -zone, dmmd, nvck0, pm, nvck0, &
-          &           zzero, wvck0, nvck)
-        end if
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
         deallocate(dmmd)
          
       case ('lanczos')
@@ -373,9 +554,9 @@ contains
             call mkl_qr(nvck0, blks, evec(:,1:blks))
 
           case ('svd')
-            allocate(zmat(mbsiz,nvck0))
+            allocate(zmat(mbdim,nvck0))
             zmat(:,:) = md(:,:)
-            call orthogonalize(mbsiz, nvck0, zmat)
+            call orthogonalize(mbdim, nvck0, zmat)
             do i = 1, blks
               evec(:,i) = conjg(zmat(i,:))
             end do
@@ -391,19 +572,11 @@ contains
         call lanczos_band_matvec(matrix_vector, nvck0, niter, blks, evec, tvck)
         
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck0, &
-        &           zone, md, mbsiz, evec, nvck0, &
-        &           zzero, wvck, mbsiz)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck0, &
+        &           zone, md, mbdim, evec, nvck0, &
+        &           zzero, wvck, mbdim)
 
-        if (Gamma) then
-          ! Eq. (2.38) i=0, n/=n' term
-          allocate(wvck0(nvck,3))
-          call zgemm( 't', 'n', nvck, 3, nvck0, &
-          &           -zone, evec, nvck0, pm, nvck0, &
-          &           zzero, wvck0, nvck)
-        end if
-        
         ! clear memory
         deallocate(evec)
 
@@ -416,33 +589,22 @@ contains
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
-        call zgemm( 'c', 'n', nvck, nvck, mbsiz, &
-        &           zone, md, mbsiz, md, mbsiz,  &
+        call zgemm( 'c', 'n', nvck, nvck, mbdim, &
+        &           zone, md, mbdim, md, mbdim,  &
         &           zzero, dmmd, nvck)
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
-
-        if (Gamma) call add_q0_contribution()
 
         allocate(tvck(nvck))
         ! call mkl_zheev(nvck,dmmd,tvck)
         call mkl_zheevr(nvck,dmmd,tvck)
 
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-        &           zone, md, mbsiz, dmmd, nvck, &
-        &           zzero, wvck, mbsiz)
-
-        if (Gamma) then
-          ! Eq. (2.38) i=0, n/=n' term
-          allocate(wvck0(nvck,3))
-          call zgemm( 't', 'n', nvck, 3, nvck, &
-          &           -zone, dmmd, nvck, pm, nvck, &
-          &           zzero, wvck0, nvck)
-        end if
-
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
         deallocate(dmmd)
 
       case ('rank1')
@@ -452,11 +614,11 @@ contains
         write(*,*) '    Rank-1 update diagonalization'
 
         ! SVD of M*D^{1/2}
-        n = min(mbsiz, nvck0)
+        n = min(mbdim, nvck0)
         allocate(eval(n))
-        allocate(evec(mbsiz,nvck0))
+        allocate(evec(mbdim,nvck0))
         evec(:,:) = md(:,:)
-        call generate_update_vectors(mbsiz, nvck0, evec, eval)
+        call generate_update_vectors(mbdim, nvck0, evec, eval)
 
         ! Rank-1 update iterations
         nvck = nvck0
@@ -485,10 +647,10 @@ contains
         deallocate(z, evec, eval)
 
         ! w_{vck} (2.20)
-        allocate(wvck(mbsiz,nvck))
-        call zgemm( 'n', 'n', mbsiz, nvck, nvck, &
-        &           zone, md, mbsiz, dmmd, nvck, &
-        &           zzero, wvck, mbsiz)
+        allocate(wvck(mbdim,nvck))
+        call zgemm( 'n', 'n', mbdim, nvck, nvck, &
+        &           zone, md, mbdim, dmmd, nvck, &
+        &           zzero, wvck, mbdim)
         
         deallocate(dmmd)
 
@@ -533,130 +695,15 @@ contains
     end do
 
     ! M*q
-    allocate(zv(mbsiz))
-    call zgemv('n', mbsiz, n, zone, md, mbsiz, zq, 1, zzero, zv, 1)
+    allocate(zv(mbdim))
+    call zgemv('n', mbdim, n, zone, md, mbdim, zq, 1, zzero, zv, 1)
     ! M^{+}*M*q
-    call zgemv('c', mbsiz, n, zone, md, mbsiz, zv, 1, zone,  zr, 1)
+    call zgemv('c', mbdim, n, zone, md, mbdim, zv, 1, zone,  zr, 1)
     deallocate(zv)
 
-    ! P^{+}*P*q
-    if (Gamma) then
-
-      select case(input%gw%scrcoul%sciavtype)
-
-      case('isotropic')
-        ! q->0 direction
-        q0eps(:) = input%gw%scrcoul%q0eps(:)
-        modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
-        q0eps(:) = q0eps(:)/modq0
-        allocate(zv(n))
-        do i = 1, n
-          zv(i) = pm(i,1)*q0eps(1)+ &
-          &       pm(i,2)*q0eps(2)+ &
-          &       pm(i,3)*q0eps(3)
-        end do
-        ! u^{+}*u*q
-        do i = 1, n
-          zr(i) = zr(i) + conjg(zv(i))*zdotu(n, zv, 1, zq, 1)
-        end do
-        deallocate(zv)
-
-      case('sphavrg')
-        c1 = 1.d0
-        c2 = sqrt(0.5d0)
-        allocate(zv(n))
-        do i = 1, n
-          p1(1) = c2*(zi*pm(i,2)+pm(i,1))
-          p1(2) = c1*pm(i,3)
-          p1(3) = c2*(zi*pm(i,2)-pm(i,1))
-          do j = 1, n
-            p2(1) = c2*(zi*pm(j,2)+pm(j,1))
-            p2(2) = c1*pm(j,3)
-            p2(3) = c2*(zi*pm(j,2)-pm(j,1))
-            zv(j) = conjg(p1(1))*p2(1) + &
-            &       conjg(p1(2))*p2(2) + &
-            &       conjg(p1(3))*p2(3)
-          end do
-          zr(i) = zr(i) + zdotu(n, zv, 1, zq, 1)
-        end do
-        deallocate(zv)
-
-      case default
-        write(*,*) "ERROR(mod_wpol::matrix_vector): Unknown averaging type!"
-        stop
-      end select
-
-    end if    
-
     return
   end subroutine
 
-!--------------------------------------------------------------------------------
-  subroutine add_q0_contribution()
-    use modinput
-    use modmain, only : pi, omega, zone, zi
-    implicit none
-    integer :: i, j
-    real(8) :: f1, f2, c1, c2
-    complex(8) :: p1(3), p2(3)
-    complex(8), allocatable :: zv(:)
-    real(8)    :: q0eps(3), modq0
-
-    select case(input%gw%scrcoul%sciavtype)
-    
-    case('isotropic')
-
-      ! q->0 direction
-      q0eps(:) = input%gw%scrcoul%q0eps(:)
-      modq0    = sqrt(q0eps(1)**2+q0eps(2)**2+q0eps(3)**2)
-      q0eps(:) = q0eps(:)/modq0
-
-      allocate(zv(nvck))
-      do i = 1, nvck
-        zv(i) = pm(i,1)*q0eps(1)+ &
-        &       pm(i,2)*q0eps(2)+ &
-        &       pm(i,3)*q0eps(3)
-      end do
-
-      do i = 1, nvck
-        do j = i, nvck
-          dmmd(j,i) = dmmd(j,i) + conjg(zv(j))*zv(i)
-          dmmd(i,j) = conjg(dmmd(j,i))
-        end do
-      end do
-
-      deallocate(zv)
-
-    case('sphavrg')
-
-      ! c1 = sqrt(4.d0*pi/3.d0)
-      ! c2 = sqrt(2.d0*pi/3.d0)
-      c1 = 1.d0
-      c2 = sqrt(0.5d0)
-
-      do i = 1, nvck
-        p1(1) = c2*(zi*pm(i,2)+pm(i,1))
-        p1(2) = c1*pm(i,3)
-        p1(3) = c2*(zi*pm(i,2)-pm(i,1))
-        do j = i, nvck
-          p2(1) = c2*(zi*pm(j,2)+pm(j,1))
-          p2(2) = c1*pm(j,3)
-          p2(3) = c2*(zi*pm(j,2)-pm(j,1))
-          dmmd(j,i) = dmmd(j,i) + &
-          &           ( conjg(p2(1))*p1(1) + &
-          &             conjg(p2(2))*p1(2) + &
-          &             conjg(p2(3))*p1(3) )
-          dmmd(i,j) = conjg(dmmd(j,i))
-        end do
-      end do
-
-    case default
-      write(*,*) "ERROR(mod_wpol::calc_md_dmmd): Unknown averaging type!"
-      stop
-    end select
-
-    return
-  end subroutine
 
 !--------------------------------------------------------------------------------
   subroutine calc_wmat()
@@ -703,12 +750,56 @@ contains
   end subroutine
 
 !--------------------------------------------------------------------------------
+  subroutine set_wpol_indices()
+    implicit none
+    integer :: i, ik, n, m
+
+    ! total number of states including the core ones
+    if (input%gw%coreflag=='all') then
+      ndim = nomax+ncg
+    else
+      ndim = nomax
+    end if
+    mdim  = nstdf-numin+1
+
+    nvck0 = kqset%nkpt*ndim*mdim
+
+    ! map a -> {vck}
+    if (allocated(a2vck)) deallocate(a2vck)
+    allocate(a2vck(3,nvck0))
+
+    ! map {vck} -> a
+    if (allocated(vck2a)) deallocate(vck2a)
+    allocate(vck2a(1:ndim,numin:nstdf,kqset%nkpt))
+
+    i = 0
+    do ik = 1, kqset%nkpt
+      do m = numin, nstdf
+      do n = 1, ndim
+        i = i+1
+        a2vck(1,i) = n
+        a2vck(2,i) = m
+        a2vck(3,i) = ik
+        vck2a(n,m,ik) = i
+      end do
+      end do
+    end do
+
+    return
+  end subroutine
+
+!--------------------------------------------------------------------------------
+  subroutine del_wpol_indices()
+    if (allocated(a2vck)) deallocate(a2vck)
+    if (allocated(vck2a)) deallocate(vck2a)
+  end subroutine  
+
+!--------------------------------------------------------------------------------
   subroutine clear_wpol()
     if (allocated(d))    deallocate(d)
     if (allocated(md))   deallocate(md)
     if (allocated(dmmd)) deallocate(dmmd)
     if (allocated(wij))  deallocate(wij)
-    if (allocated(pm))   deallocate(pm)
   end subroutine
 
 !--------------------------------------------------------------------------------
