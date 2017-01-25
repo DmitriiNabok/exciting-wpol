@@ -511,12 +511,15 @@ contains
         call zgemm( 'c', 'n', nvck, nvck, mbdim, &
         &           zone, md, mbdim, md, mbdim,  &
         &           zzero, dmmd, nvck)
+        if (Gamma) call add_q0_contribution()
         ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
+        !cutoff = input%gw%eigensolver%cutoff
+		    cutoff=maxval(abs(dmmd))
         allocate(tvck(nvck))
-        call wpol_pert(nvck,d,dmmd,tvck)
+        call wpol_pert(nvck,d,dmmd,tvck,cutoff)
         ! w_{vck} (2.20)
         allocate(wvck(mbdim,nvck))
         call zgemm( 'n', 'n', mbdim, nvck, nvck, &
