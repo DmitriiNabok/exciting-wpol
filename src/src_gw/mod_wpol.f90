@@ -487,7 +487,7 @@ contains
     implicit none
     integer, intent(in) :: iq
     integer :: i, j, n, niter, blks
-    real(8) :: rho
+    real(8) :: rho, cutoff
     real(8),    allocatable :: eval(:)
     complex(8), allocatable :: zmat(:,:), evec(:,:), z(:)
     complex(8), external    :: zdotc
@@ -506,18 +506,17 @@ contains
         ! Perturbation theory
         !----------------------
         write(*,*) '    (test) First-order perturbation theory'
+        ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         nvck = nvck0
         allocate(dmmd(nvck,nvck))
         call zgemm( 'c', 'n', nvck, nvck, mbdim, &
         &           zone, md, mbdim, md, mbdim,  &
         &           zzero, dmmd, nvck)
-        if (Gamma) call add_q0_contribution()
-        ! D*D + D^{1/2}*M^{+}*M*D^{1/2}
         do i = 1, nvck
           dmmd(i,i) = d(i)*d(i) + dmmd(i,i)
         end do
         !cutoff = input%gw%eigensolver%cutoff
-		    cutoff=maxval(abs(dmmd))
+        cutoff = maxval(abs(dmmd))
         allocate(tvck(nvck))
         call wpol_pert(nvck,d,dmmd,tvck,cutoff)
         ! w_{vck} (2.20)
