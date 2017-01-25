@@ -265,13 +265,7 @@ contains
       do i = 1, nvck
         !------------------
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
-        zt1 = 0.5d0 / zt1
-        !------------------
-        ! t1 = tvck(i) * ( om - enk + sign(1,nomax-n)*tvck(i) )
-        ! t2 = tvck(i) * sign(1,nomax-n) * eta
-        ! zt1 = 0.5d0*cmplx( t1 / ( t1*t1 + t2*t2 ), &
-        ! &                  t2 / ( t1*t1 + t2*t2 ), 8)
-        !------------------
+        zt1 = 0.5d0 / zt1        
         zt2 = wvck(mbsiz+1,i)
         !---------------------------------------------------
         ! contribution from the first term: 1/q^2
@@ -294,7 +288,7 @@ contains
 !$omp default(shared) &
 !$omp private(i,zt1,p,zt2)
 !$omp do reduction (+:sigma1,sigma2)
-#endif      
+#endif
       do i = 1, nvck
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-n)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
@@ -352,12 +346,6 @@ contains
         !------------------
         zt1 = tvck(i) * ( om - enk + sign(1,nomax-m)*(tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
-        !------------------
-        ! t1 = tvck(i) * ( om - enk + sign(1,nomax-m)*tvck(i) )
-        ! t2 = tvck(i) * sign(1,nomax-m) * eta
-        ! zt1 = 0.5d0*cmplx( t1 / ( t1*t1 + t2*t2 ), &
-        ! &                  t2 / ( t1*t1 + t2*t2 ), 8)
-        !------------------
         mwt(i) = zt1*mw(m,i)
       end do
       ! sum over vck
