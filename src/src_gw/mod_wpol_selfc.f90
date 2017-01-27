@@ -24,6 +24,7 @@ contains
     use m_getunit
     implicit none
     integer :: iq, fid
+    integer :: i
 
     eta = input%gw%selfenergy%swidth
 
@@ -132,7 +133,7 @@ contains
     call mpi_sum_array(0,selfec,nbandsgw,freq%nomeg,kset%nkpt,mycomm_row)
 #endif
 
-    ! print to file the results
+    ! print self-energy to file
     if (myrank==0) call write_selfecnn()
 
     ! delete index mapping arrays
@@ -185,7 +186,8 @@ contains
 
         ! precalculate \sum_{i} conjg(M^i_{nm})*w_{vck} in Eq.(2.28)
         call zgemm( 'c', 'n', mdim, nvck, mbsiz, &
-        &           zone, minmmat(1:mbsiz,n,:), mbsiz, wvck(1:mbsiz,:), mbsiz, &
+        &           zone, minmmat(1:mbsiz,n,1:mdim), mbsiz, &
+        &           wvck(1:mbsiz,1:nvck), mbsiz, &
         &           zzero, mw, mdim)
 
 #ifdef USEOMP

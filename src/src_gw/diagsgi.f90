@@ -16,6 +16,7 @@ subroutine diagsgi(iq)
     use modmain, only : cfunig
     use modgw,   only : Gset, Gqset, sgi, &
     &                   fdebug, time_diagsgi
+    use mod_wpol_diagonalization
       
 !!INPUT PARAMETERS:
     implicit none
@@ -30,19 +31,6 @@ subroutine diagsgi(iq)
     
     complex(8) :: cfact
     real(8), allocatable :: epsipw(:)
-    complex(8), allocatable :: zmat(:,:)
-    
-    ! for diagonalization subroutine
-    real(8) :: vl, vu, abstol
-    integer :: il, iu, neval, lwork, info, lrwork, liwork
-    complex(8), allocatable :: work(:)
-    real(8),    allocatable :: rwork(:)
-    integer,    allocatable :: iwork(:), ifail(:), isuppz(:)
-    real(8), external :: dlamch
-
-!!EXTERNAL ROUTINES: 
-    external zheev      ! Lapack diagonalization subroutine
-
 !
 ! !REVISION HISTORY:
 !
@@ -93,37 +81,9 @@ subroutine diagsgi(iq)
     allocate(epsipw(ngq))
     
 if (.false.) then
-    lwork = 2*ngq-1
-    allocate(work(lwork),rwork(3*ngq-2))
-    call zheev('V','U',ngq,sgi,ngq,epsipw,work,lwork,rwork,info)
-    if (info.ne.0) stop "diagsgi: Fail in calling zheev"
-    deallocate(work,rwork)
+    call mkl_zheev ( ngq, sgi, epsipw )
 else
-    allocate(zmat(ngq,ngq))
-    zmat(:,:) = sgi(:,:)
-    lrwork = -1
-    liwork = -1
-    lwork = -1
-    iu = ngq
-    abstol = 2.d0*dlamch('S')
-    allocate(work(1),rwork(1),iwork(1),isuppz(1))
-    call zheevr('V', 'A', 'U', ngq, zmat, ngq, vl, vu, il, iu, &
-    &           abstol, neval, epsipw, sgi, ngq, isuppz, work, lwork, rwork, &
-    &           lrwork, iwork, liwork, info)
-    call errmsg(info.ne.0,'CALCBARCMB',"Fail to diag. barc by zheevr !!!")
-    lrwork = int(rwork(1))
-    liwork = int(iwork(1))
-    lwork = int(work(1))
-    ! write(*,*) lrwork,liwork,lwork
-    deallocate(work,rwork,iwork,isuppz)
-    allocate(work(lwork),rwork(lrwork),iwork(liwork))
-    allocate(isuppz(2*ngq))
-    call zheevr('V', 'A', 'U', ngq, zmat, ngq, vl, vu, il, iu, &
-    &           abstol, neval, epsipw, sgi, ngq, isuppz, work, lwork, rwork, &
-    &           lrwork, iwork, liwork, info)
-    call errmsg(info.ne.0,'CALCBARCMB',"Fail to diag. barc by zheevr !!!")
-    deallocate(work,rwork,iwork,isuppz)
-    deallocate(zmat)
+    call mkl_zheevr ( ngq, sgi, epsipw )
 end if
 
     if (input%gw%debug) then

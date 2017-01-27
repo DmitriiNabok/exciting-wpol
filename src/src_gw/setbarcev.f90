@@ -37,6 +37,18 @@ subroutine setbarcev(evtol)
 !EOP
 !BOC
 
+    ! Build the trasformation matrix
+    
+    ! mbsiz = matsiz
+    ! if (allocated(barc)) deallocate(barc)
+    ! allocate(barc(matsiz,mbsiz))
+    ! barc(:,:) = zzero
+    ! do im = 1, matsiz 
+    !   vc = cmplx(barcev(im),0.d0,8)
+    !   barc(:,im) = vmat(:,im)*sqrt(vc)
+    ! end do
+    ! return
+
     ! Reduce the basis size by choosing eigenvectors of barc with 
     ! eigenvalues larger than evtol
     allocate(im_kept(matsiz))
@@ -74,7 +86,7 @@ subroutine setbarcev(evtol)
       end if
       deallocate(wi0,wi0new)
     end if
-    10 format("immax, max(wi0new), barcev(immax): ",i4,4x,f8.3,4x,f9.6)
+10  format("immax, max(wi0new), barcev(immax): ",i4,4x,f8.3,4x,f9.6)
     
     if (mbsiz < matsiz) then
       if (myrank==0) then

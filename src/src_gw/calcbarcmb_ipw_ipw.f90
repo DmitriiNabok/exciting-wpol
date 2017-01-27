@@ -84,9 +84,10 @@ subroutine calcbarcmb_ipw_ipw(iq)
     &           zzero,tmat2,ngq)
     deallocate(tmat1)
       
-    do jgq = 1, ngq
-      do igq = 1, ngq
+    do igq = 1, ngq
+      do jgq = igq, ngq
         barc(locmatsiz+igq,locmatsiz+jgq) = tmat2(igq,jgq)
+        barc(locmatsiz+jgq,locmatsiz+igq) = conjg(tmat2(igq,jgq))
       end do 
     end do
     deallocate(tmat2)

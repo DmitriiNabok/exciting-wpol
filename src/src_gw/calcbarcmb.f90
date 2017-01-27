@@ -14,6 +14,7 @@ subroutine calcbarcmb(iq)
     use modinput
     use modgw
     use mod_mpi_gw, only: myrank
+    use mod_wpol_diagonalization
     
 !!INPUT PARAMETERS: 
     implicit none
@@ -22,14 +23,6 @@ subroutine calcbarcmb(iq)
 !!LOCAL VARIABLES:
     integer :: imix, jmix, igq, jgq
     real(8) :: tstart, tend, t0, t1
-    ! for diagonalization subroutine
-    real(8) :: vl, vu, abstol
-    integer :: il, iu, neval, lwork, info, lrwork, liwork
-    complex(8), allocatable :: work(:)
-    real(8),    allocatable :: rwork(:)
-    integer,    allocatable :: iwork(:), ifail(:), isuppz(:)
-
-    real(8), external :: dlamch
       
 !!REVISION HISTORY:
 ! 
@@ -75,14 +68,14 @@ subroutine calcbarcmb(iq)
       call calcbarcmb_mt_mt(iq)
       !call timesec(t1)
       !write(*,*) 'calcbarcmb_mt_mt', t1-t0 
-    
+
       !-----------------------------------------------------------
       ! Matrix elements between an atomic mixed function and an IPW
       !-----------------------------------------------------------
       !call timesec(t0)
       call calcbarcmb_ipw_mt(iq)
       !call timesec(t1)
-      !write(*,*) 'calcbarcmb_ipw_mt', t1-t0 
+      !write(*,*) 'calcbarcmb_ipw_mt', t1-t0
     
       !-----------------------------------------------------------
       ! Matrix elements between two IPW's
@@ -91,13 +84,23 @@ subroutine calcbarcmb(iq)
       call calcbarcmb_ipw_ipw(iq)
       !call timesec(t1)
       !write(*,*) 'calcbarcmb_ipw_ipw', t1-t0
-      
+
     case default
     
       write(*,*) 'ERROR(calcbarcmb): Unknown basis type!'
       stop
       
     end select
+
+    if (input%gw%debug) then
+      write(fdebug,*) "### barc ###"
+      do imix = 1, matsiz, matsiz/10
+        do jmix = 1, matsiz, matsiz/10
+          write(fdebug,'(2i5,4e16.6)') imix, jmix, &
+          &    barc(imix,jmix), barc(imix,jmix)-conjg(barc(jmix,imix)) 
+        end do
+      end do
+    endif !debug    
     
 !===============================================================================
 ! Diagonalize the bare coulomb matrix
@@ -114,36 +117,11 @@ subroutine calcbarcmb(iq)
 if (.false.) then 
     vmat(1:matsiz,1:matsiz) = barc(1:matsiz,1:matsiz)
     deallocate(barc)  
-    lwork = 2*matsiz
-    allocate(work(lwork),rwork(3*matsiz))
-    call zheev( 'v','u',matsiz,vmat,matsiz, &
-    &           barcev,work,lwork,rwork,info)
-    call errmsg(info.ne.0,'CALCBARCMB',"Fail to diag. barc by zheev !!!")
-    deallocate(work,rwork)
+    call mkl_zheev ( matsiz, vmat, barcev )
 else
-    lrwork = -1
-    liwork = -1
-    lwork = -1
-    iu = matsiz
-    abstol = 2.d0*dlamch('S')
-    allocate(work(1),rwork(1),iwork(1),isuppz(1))
-    call zheevr('V', 'A', 'U', matsiz, barc, matsiz, vl, vu, il, iu, &
-    &           abstol, neval, barcev, vmat, matsiz, isuppz, work, lwork, rwork, &
-    &           lrwork, iwork, liwork, info)
-    call errmsg(info.ne.0,'CALCBARCMB',"Fail to diag. barc by zheevr !!!")
-    lrwork=int(rwork(1))
-    liwork=int(iwork(1))
-    lwork=int(work(1))
-    ! write(*,*) lrwork,liwork,lwork
-    deallocate(work,rwork,iwork,isuppz)
-    allocate(work(lwork),rwork(lrwork),iwork(liwork))
-    allocate(isuppz(2*matsiz))
-    call zheevr('V', 'A', 'U', matsiz, barc, matsiz, vl, vu, il, iu, &
-    &           abstol, neval, barcev, vmat, matsiz, isuppz, work, lwork, rwork, &
-    &           lrwork, iwork, liwork, info)
-    call errmsg(info.ne.0,'CALCBARCMB',"Fail to diag. barc by zheevr !!!")
-    deallocate(work,rwork,iwork,isuppz)
+    vmat(1:matsiz,1:matsiz) = barc(1:matsiz,1:matsiz)
     deallocate(barc)
+    call mkl_zheevr ( matsiz, vmat, barcev )
 end if
 
     !call timesec(t1)

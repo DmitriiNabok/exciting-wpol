@@ -36,7 +36,7 @@ subroutine calcbarcmb_mt_mt(iq)
       l1  = mbindex(imix,4)
       m1  = mbindex(imix,5)
       
-      do jmix = 1, locmatsiz
+      do jmix = imix, locmatsiz
         js  = mbindex(jmix,1)
         ja  = mbindex(jmix,2)
         jas = idxas(ja,js)
@@ -71,6 +71,8 @@ subroutine calcbarcmb_mt_mt(iq)
           end if
           
         end if
+
+        barc(jmix,imix) = conjg(barc(imix,jmix))
         
       end do ! jmix
       
@@ -83,11 +85,11 @@ subroutine calcbarcmb_mt_mt(iq)
     ! deallocate (global) structure factors
     deallocate(sgm)
     
-    !write(*,*) 'MT-MT'
-    !do imix = 1, locmatsiz, locmatsiz/10
-    !do jmix = 1, locmatsiz, locmatsiz/10
+    ! write(*,*) 'MT-MT'
+    ! do imix = 1, locmatsiz, locmatsiz/10
+    ! do jmix = 1, locmatsiz, locmatsiz/10
     !  write(*,*) imix, jmix, barc(imix,jmix)
-    !end do
-    !end do
+    ! end do
+    ! end do
 
 end subroutine

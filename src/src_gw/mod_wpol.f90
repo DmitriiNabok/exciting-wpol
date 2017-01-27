@@ -251,6 +251,7 @@ contains
     integer       :: fid, i, j
     integer(8)    :: recl
     character(80) :: fname, string
+    integer       :: mbdim_
 
     ! store q-dependent data
     call getunit(fid)
@@ -258,7 +259,7 @@ contains
     write(fname,'("TVCK-q",I4.4,".OUT")') iq
     open(fid, File=trim(fname), Action='READ', Err=10)
     read(fid,*) string, nvck
-    
+   
     if (allocated(tvck)) deallocate(tvck)
     allocate(tvck(nvck))
     do i = 1, nvck
@@ -270,7 +271,14 @@ contains
     inquire(IoLength=recl) mbdim, nvck
     open(fid, File=trim(fname), Form='UNFORMATTED', Access='DIRECT', Recl=recl, Err=20)
     read(fid, Rec=1) mbdim, nvck
-    close(fid)  
+    close(fid)
+
+    if (mbdim < mbsiz) then
+      write(*,*) "ERROR(mod_wpol::get_wpol) Dimension mismatch!"
+      write(*,*) "mbdim = ", mbdim
+      write(*,*) "mbsiz = ", mbsiz
+      stop
+    end if
 
     if (allocated(wvck)) deallocate(wvck)
     allocate(wvck(mbdim,nvck))
