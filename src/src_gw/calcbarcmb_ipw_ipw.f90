@@ -31,10 +31,12 @@ subroutine calcbarcmb_ipw_ipw(iq)
       !if (vccut) tmat1(1:ngq,1) = i_sz*mpwipw(1:ngq,1)
     end if
     
-#ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(ipw,gqvec,gqlen,vc,kxy,kz,igq)
-!$OMP DO
-#endif    
+! #ifdef USEOMP
+! !$omp parallel &
+! !$omp default(shared) &
+! !$omp private(ipw,gqvec,gqlen,vc,kxy,kz,igq)
+! !$omp do
+! #endif    
     do ipw = ipw0, npw
       gqvec(1:3) = Gset%vgc(1:3,Gqbarc%igkig(ipw,1,iq))+kqset%vqc(1:3,iq)
       gqlen = gqvec(1)*gqvec(1)+gqvec(2)*gqvec(2)+gqvec(3)*gqvec(3)
@@ -72,10 +74,10 @@ subroutine calcbarcmb_ipw_ipw(iq)
       end do
       
     end do
-#ifdef USEOMP
-!$OMP END DO
-!$OMP END PARALLEL
-#endif    
+! #ifdef USEOMP
+! !$omp end do
+! !$omp end parallel
+! #endif    
     
     allocate(tmat2(1:ngq,1:ngq))  
     call zgemm( 'n','c',ngq,ngq,npw, &

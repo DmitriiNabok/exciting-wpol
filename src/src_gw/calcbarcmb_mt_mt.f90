@@ -25,8 +25,10 @@ subroutine calcbarcmb_mt_mt(iq)
     call sigma(iq,4*(input%gw%MixBasis%lmaxmb+1))
     
 #ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(imix,is,ia,ias,irm,l1,m1,jmix,js,ja,jas,jrm,l2,m2,tg,lm12,minu,stc,ijrm)
-!$OMP DO
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(imix,is,ia,ias,irm,l1,m1,jmix,js,ja,jas,jrm,l2,m2,tg,lm12,minu,stc,ijrm)
+!$omp do
 #endif
     do imix = 1, locmatsiz
       is  = mbindex(imix,1)
@@ -78,8 +80,8 @@ subroutine calcbarcmb_mt_mt(iq)
       
     end do ! imix
 #ifdef USEOMP
-!$OMP END DO
-!$OMP END PARALLEL
+!$omp end do
+!$omp end parallel
 #endif
 
     ! deallocate (global) structure factors

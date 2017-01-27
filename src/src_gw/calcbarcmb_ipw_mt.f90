@@ -44,10 +44,12 @@ subroutine calcbarcmb_ipw_mt(iq)
       !if (vccut) tmat1(1,1:locmatsiz) = i_sz*mpwmix(1:locmatsiz,1)
     end if
     
-#ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(ipw,gvec,gqvec,gqlen,vc,kxy,kz,sph,imix,is,nr,bessl,ir,x,fr,gr,cf,ia,ias,gpr,expg,irm,l1,janl,prefac,m1)
-!$OMP DO
-#endif
+! #ifdef USEOMP
+! !$omp parallel &
+! !$omp default(shared) &
+! !$omp private(ipw,gvec,gqvec,gqlen,vc,kxy,kz,sph,imix,is,nr,bessl,ir,x,fr,gr,cf,ia,ias,gpr,expg,irm,l1,janl,prefac,m1)
+! !$omp do
+! #endif
     do ipw = ipw0, npw
     
       ! G vector (lattice)
@@ -141,10 +143,10 @@ subroutine calcbarcmb_ipw_mt(iq)
       end do ! is
       
     end do ! ig
-#ifdef USEOMP
-!$OMP END DO
-!$OMP END PARALLEL
-#endif
+! #ifdef USEOMP
+! !$omp end do
+! !$omp end parallel
+! #endif
 
     !-------------------------------------------------
     ! \Sum_G' \tilde{S}^{*}_{G'i}(q) J_{aNL}(|G'+q|) 

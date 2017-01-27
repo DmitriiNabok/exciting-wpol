@@ -190,10 +190,6 @@ contains
         &           wvck(1:mbsiz,1:nvck), mbsiz, &
         &           zzero, mw, mdim)
 
-#ifdef USEOMP
-!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(iom,zt1)
-!$OMP DO
-#endif
         ! loop over frequencies
         do iom = 1, freq%nomeg
           zt1 = 0.d0
@@ -202,10 +198,6 @@ contains
           zt1 = zt1 + sum_core(jkp,iom,mw)
           selfec(n,iom,ik) = selfec(n,iom,ik) + wkq*zt1
         end do ! iom
-#ifdef USEOMP
-!$OMP END DO
-!$OMP END PARALLEL
-#endif
 
         if (Gamma) then
           ! loop over frequencies
@@ -343,6 +335,12 @@ contains
     ! sum over states
     do m = 1, nstse
       enk = evalsv(m,jkp)
+#ifdef USEOMP
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(i,zt1)
+!$omp do
+#endif      
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
         !------------------
@@ -350,6 +348,10 @@ contains
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
+#ifdef USEOMP
+!$omp end do
+!$omp end parallel
+#endif      
       ! sum over vck
       zsum = zsum + zdotc(nvck,mw(m,:),1,mwt,1)
     end do ! m
@@ -385,12 +387,22 @@ contains
       ias = idxas(ia,is)
       ic  = corind(icg,3)
       enk = evalcr(ic,ias)
+#ifdef USEOMP
+!$omp parallel &
+!$omp default(shared) &
+!$omp private(i,zt1)
+!$omp do
+#endif
       ! apply frequency/state dependent prefactor
       do i = 1, nvck
         zt1 = tvck(i) * ( om - enk + (tvck(i)-zi*eta) )
         zt1 = 0.5d0 / zt1
         mwt(i) = zt1*mw(m,i)
       end do
+#ifdef USEOMP
+!$omp end do
+!$omp end parallel
+#endif
       ! sum over vck
       zsum = zsum + zdotc(nvck,mw(m,:),1,mwt,1)
     end do ! m
