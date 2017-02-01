@@ -1,5 +1,5 @@
 
-module mod_wpol_selfc
+module mod_selfc_wpol
 
   use modinput
   use modgw
@@ -12,7 +12,7 @@ module mod_wpol_selfc
   integer,    private :: mdim
   real(8),    private :: eta
 
-  public  :: task_wpol_selfc
+  public  :: task_selfc_wpol
   private :: calc_selfc_wpol_q, calc_minmkq
 
   real(8), parameter :: eps = 1.d-8
@@ -20,9 +20,10 @@ module mod_wpol_selfc
 contains
 
 !--------------------------------------------------------------------------------
-  subroutine task_wpol_selfc()
+  subroutine task_selfc_wpol(fromfile)
     use m_getunit
     implicit none
+    logical, intent(in) :: fromfile
     integer :: iq, fid
     integer :: i
 
@@ -111,12 +112,14 @@ contains
       call setbarcev(input%gw%barecoul%barcevtol)
 
       ! Calculate W_{ij} in pole representation
-      ! call calc_md_dmmd(iq)
-      ! call diagonalize_dmmd(iq)
-      ! call delete_coulomb_potential
-      ! call clear_wpol()
-
-      call get_wpol(iq)
+      if (fromfile) then
+        call get_wpol(iq)
+      else
+        call calc_md_dmmd(iq)
+        call diagonalize_dmmd(iq)
+        call delete_coulomb_potential
+        call clear_wpol()
+      end if
 
       ! Calculate q-dependent \Sigma^c_{nn}(k,q;\omega)
       call calc_selfc_wpol_q(iq)

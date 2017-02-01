@@ -9,7 +9,7 @@ subroutine gw_main()
     use m_getunit
     use mod_hdf5
     use mod_wpol,       only : test_wpol, task_wpol
-    use mod_wpol_selfc, only : task_wpol_selfc
+    use mod_selfc_wpol, only : task_selfc_wpol
     
     implicit none
     real(8) :: tstart, tend
@@ -187,17 +187,22 @@ subroutine gw_main()
             ! if (rank==0) call test_mbrotmat
 
         ! new
+
+        case('selfx')
+            call task_selfx()
+
         case('test_wpol') 
             call test_wpol()
+
+        case('selfc_wpol')
+            call task_selfc_wpol(.false.)
 
         case('wpol')
             call task_wpol()
 
-        case('selfc_wpol')
-            call task_wpol_selfc()
+        case('selfc_wpol_read')
+            call task_selfc_wpol(.true.)
 
-        case('selfx')
-            call task_selfx()
 
         case('sfunc_wpol')
             call plot_spectrFunc()
