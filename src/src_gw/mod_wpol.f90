@@ -298,6 +298,34 @@ contains
   end subroutine
 
 !--------------------------------------------------------------------------------
+  subroutine get_tvck(tvck_s,iq)
+    use m_getunit
+    implicit none
+    integer, intent(in) :: iq
+    real(8), intent(out) :: tvck_s(nvck)
+    integer       :: fid, i, j
+    character(80) :: fname, string
+
+    ! store q-dependent data
+    call getunit(fid)
+
+    write(fname,'("TVCK-q",I4.4,".OUT")') iq
+    open(fid, File=trim(fname), Action='READ', Err=10)
+    read(fid,*) string, nvck
+    
+    do i = 1, nvck
+      read(fid,*) j, tvck_s(i)
+    end do
+    close(fid)
+
+    return
+
+10  write(*,*) 'ERROR(mod_wpol::put_wpol) Error opening file TVCK-q.OUT for reading!'
+    stop
+
+  end subroutine
+
+!--------------------------------------------------------------------------------
   subroutine calc_md_dmmd(iq)
     implicit none
     integer, intent(in) :: iq

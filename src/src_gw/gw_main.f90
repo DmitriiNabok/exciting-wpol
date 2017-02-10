@@ -194,15 +194,11 @@ subroutine gw_main()
         case('test_wpol') 
             call test_wpol()
 
-        case('selfc_wpol')
-            call task_selfc_wpol(.false.)
-
         case('wpol')
             call task_wpol()
 
-        case('selfc_wpol_read')
-            call task_selfc_wpol(.true.)
-
+        case('selfc_wpol')
+            call task_selfc_wpol()
 
         case('sfunc_wpol')
             call plot_spectrFunc()
