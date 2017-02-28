@@ -26,7 +26,7 @@ contains
     use m_getunit
     implicit none
     integer :: iq, fid
-    integer :: i
+    integer :: i, nq(3)
 
     eta = input%gw%selfenergy%swidth
 
@@ -37,6 +37,8 @@ contains
     call clean_gndstate
     
     ! print q-grid
+    nq(:)=input%gw%ngridq(:)
+    
     open(500, File="kqpoints.dat", Action='WRITE')
     call print_kq_vectors(kqset,500)
     close(500)
@@ -47,11 +49,11 @@ contains
     ! reciprocal lattice vectors bvec(i,3)
     ! volume = bvec(1,:) * bvec(2,:) x bvec(3,:) or (2 pi)**3 / omega
     ! surface = 2 sum bvec(i,:) x bvec(j,:)
-    wkq_eta = dot_product(bvec(:,1),cross(bvec(:,2),bvec(:,3))) / &
-    &       ( norm2(cross(bvec(:,2),bvec(:,3))) + &
-    &         norm2(cross(bvec(:,1),bvec(:,3))) + &
-    &         norm2(cross(bvec(:,1),bvec(:,2))) )
-    wkq_eta = wkq**(1.d0/3.d0)/(2.d0*pi)*abs(wkq_eta)
+    wkq_eta = wkq / (2.d0*pi) * abs(dot_product(bvec(1,:),cross(bvec(2,:),bvec(3,:))))
+    wkq_eta = wkq_eta / &
+    &       ( norm2(cross(bvec(2,:),bvec(3,:)))/(nq(2)*nq(3)) + &
+    &         norm2(cross(bvec(1,:),bvec(3,:)))/(nq(1)*nq(3)) + &
+    &         norm2(cross(bvec(1,:),bvec(2,:)))/(nq(1)*nq(2)) )
 
     !------------------------
     ! total number of states
