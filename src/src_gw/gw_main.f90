@@ -205,6 +205,12 @@ subroutine gw_main()
 
         case('evalqp_wpol')
             call calc_evalqp_wpol()
+            
+        case('selfe_diag')
+            call task_diag_selfe_wpol()    
+            
+        case('gwgamma_correction')
+            call task_gamma_correction()       
 
         case('test')
             if (rank==0) call test()
